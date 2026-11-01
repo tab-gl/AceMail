@@ -1,6 +1,6 @@
 part of '../chyme_sheet.dart';
 
-class _SearchOffer extends StatelessWidget {
+class ChymeSearchOffer extends StatelessWidget {
   const _SearchOffer({required this.query, required this.onTap});
 
   final String query;
