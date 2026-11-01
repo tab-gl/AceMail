@@ -14,6 +14,7 @@ import 'services/launcher_icon.dart';
 import 'services/local_avatars.dart';
 import 'services/notification_setup.dart';
 import 'state/mail_controller.dart';
+import 'state/chyme_conversation.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -90,6 +91,7 @@ Future<void> main() async {
       providers: [
         ChangeNotifierProvider<Preferences>.value(value: preferences),
         ChangeNotifierProvider<MailController>.value(value: controller),
+        ChangeNotifierProvider<ChymeConversation>(create: (_) => ChymeConversation()),
         Provider<LocalStore?>.value(value: localStore),
       ],
       child: const AceMailApp(),

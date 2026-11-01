@@ -69,6 +69,66 @@ class ChymeConfig {
   bool get isConfigured => endpoint.isNotEmpty && model.isNotEmpty;
 }
 
+/// Parsed model response. All protocol-line scanners share this one pass.
+class ChymeReply {
+  const ChymeReply({required this.text, required this.search, required this.deleteRequested, required this.tool});
+
+  final String text;
+  final String? search;
+  final bool deleteRequested;
+  final ChymeToolCall? tool;
+
+  factory ChymeReply.parse(String raw) {
+    final List<String> lines = raw.split('\n');
+    String? search;
+    bool deleteRequested = false;
+    ChymeToolCall? tool;
+    for (final String line in lines) {
+      final String value = line.trim();
+      final String upper = value.toUpperCase();
+      if (upper.startsWith('SEARCH:')) {
+        final String query = value.substring('SEARCH:'.length).trim();
+        if (query.isNotEmpty) search = query;
+      } else if (upper.startsWith('DELETE:')) {
+        deleteRequested = true;
+      } else if (upper.startsWith('TOOL:')) {
+        final String rest = value.substring('TOOL:'.length).trim();
+        if (rest.isEmpty) continue;
+        final int space = rest.indexOf(' ');
+        tool = space < 0
+            ? ChymeToolCall(rest.toLowerCase(), '')
+            : ChymeToolCall(rest.substring(0, space).toLowerCase(), rest.substring(space + 1).trim());
+      }
+    }
+    final String visible = lines
+        .where((String line) {
+          final String upper = line.trim().toUpperCase();
+          return !upper.startsWith('SEARCH:') && !upper.startsWith('DELETE:') && !upper.startsWith('TOOL:');
+        })
+        .join('\n')
+        .trim();
+    return ChymeReply(text: visible, search: search, deleteRequested: deleteRequested, tool: tool);
+  }
+
+  String withoutToolLine(String raw) => raw
+      .split('\n')
+      .where((String line) => !line.trim().toUpperCase().startsWith('TOOL:'))
+      .join('\n')
+      .trim();
+
+  String withoutSearchLine(String raw) => raw
+      .split('\n')
+      .where((String line) => !line.trim().toUpperCase().startsWith('SEARCH:'))
+      .join('\n')
+      .trim();
+
+  String withoutDeleteLine(String raw) => raw
+      .split('\n')
+      .where((String line) => !line.trim().toUpperCase().startsWith('DELETE:'))
+      .join('\n')
+      .trim();
+}
+
 /// Chyme: the assistant, which talks to an endpoint **you** point it at.
 ///
 /// There is no Chyme service and no Chyme account. The endpoint, the key and the
@@ -360,43 +420,11 @@ Messages are numbered in the list you were given, as [uid]. Use that number.
   /// which the sheet turns into a button rather than running it — the person
   /// asked a question, not for their list to be replaced. Pure, so the rule can
   /// be tested without a model.
-  static String? searchFrom(String reply) {
-    for (final String line in reply.split('\n').reversed) {
-      final String trimmed = line.trim();
-      if (!trimmed.toUpperCase().startsWith('SEARCH:')) continue;
-      final String query = trimmed.substring('SEARCH:'.length).trim();
-      return query.isEmpty ? null : query;
-    }
-    return null;
-  }
+  static String? searchFrom(String reply) => ChymeReply.parse(reply).search;
 
-  /// A thing the reply asked the app to do.
-  ///
-  /// The model has no hands. It writes a line, the app reads it, runs something,
-  /// and writes the answer back into the conversation — which is all "agentic"
-  /// means when you take the word apart.
-  static ChymeToolCall? toolFrom(String reply) {
-    for (final String line in reply.split('\n')) {
-      final String trimmed = line.trim();
-      if (!trimmed.toUpperCase().startsWith('TOOL:')) continue;
-      final String rest = trimmed.substring('TOOL:'.length).trim();
-      if (rest.isEmpty) continue;
-      final int space = rest.indexOf(' ');
-      if (space < 0) return ChymeToolCall(rest.toLowerCase(), '');
-      return ChymeToolCall(
-        rest.substring(0, space).toLowerCase(),
-        rest.substring(space + 1).trim(),
-      );
-    }
-    return null;
-  }
+  static ChymeToolCall? toolFrom(String reply) => ChymeReply.parse(reply).tool;
 
-  /// The reply with the `TOOL:` line taken out.
-  static String withoutToolLine(String reply) => reply
-      .split('\n')
-      .where((String line) => !line.trim().toUpperCase().startsWith('TOOL:'))
-      .join('\n')
-      .trim();
+  static String withoutToolLine(String reply) => ChymeReply.parse(reply).withoutToolLine(reply);
 
   /// Asks, runs whatever it asked for, and asks again — up to [maxSteps] times.
   ///
@@ -422,7 +450,8 @@ Messages are numbered in the list you were given, as [uid]. Use that number.
         model: model,
         turns: working,
       );
-      final ChymeToolCall? call = toolFrom(reply);
+      final ChymeReply parsedReply = ChymeReply.parse(reply);
+      final ChymeToolCall? call = parsedReply.tool;
       if (call == null) {
         return ChymeRun(reply: reply, trail: trail);
       }
@@ -447,7 +476,7 @@ Messages are numbered in the list you were given, as [uid]. Use that number.
     // Out of steps. The last thing it wrote is still an answer, minus the line
     // asking for something nobody is going to run.
     final String last = working.isEmpty ? '' : working.last.content;
-    return ChymeRun(reply: withoutToolLine(last), trail: trail);
+    return ChymeRun(reply: ChymeReply.parse(last).withoutToolLine(last), trail: trail);
   }
 
   /// Whether the reply asked for the open message to be deleted.
@@ -456,26 +485,11 @@ Messages are numbered in the list you were given, as [uid]. Use that number.
   /// sheet turns into a question, and the answer is the person's — an assistant
   /// that can remove mail on its own is one you would be right not to trust.
   /// Pure, so the rule can be tested without a model.
-  static bool deleteFrom(String reply) {
-    for (final String line in reply.split('\n')) {
-      if (line.trim().toUpperCase().startsWith('DELETE:')) return true;
-    }
-    return false;
-  }
+  static bool deleteFrom(String reply) => ChymeReply.parse(reply).deleteRequested;
 
-  /// The reply with the `DELETE:` line taken out, for showing to a person.
-  static String withoutDeleteLine(String reply) => reply
-      .split('\n')
-      .where((String line) => !line.trim().toUpperCase().startsWith('DELETE:'))
-      .join('\n')
-      .trim();
+  static String withoutDeleteLine(String reply) => ChymeReply.parse(reply).withoutDeleteLine(reply);
 
-  /// The reply with the `SEARCH:` line taken out, for showing to a person.
-  static String withoutSearchLine(String reply) => reply
-      .split('\n')
-      .where((String line) => !line.trim().toUpperCase().startsWith('SEARCH:'))
-      .join('\n')
-      .trim();
+  static String withoutSearchLine(String reply) => ChymeReply.parse(reply).withoutSearchLine(reply);
 
   static Future<String> _request(
     Uri uri, {
@@ -591,40 +605,3 @@ class ChymeRun {
 
 /// One tool: takes the argument the model wrote, returns what it should see.
 typedef ChymeTool = Future<String?> Function(String argument);
-
-/// Session-scoped conversation memory. It is intentionally in-memory only; no
-/// transcript or mail content is written to disk.
-///
-/// One conversation, and it expires. A chat that lives forever becomes a
-/// document nobody tidied: the assistant's context grows, the answers drift
-/// toward whatever was said an hour ago, and the sheet opens onto a wall of
-/// yesterday. An hour is long enough to come back to a thread you were in the
-/// middle of and short enough that the next opening is a fresh one.
-abstract final class ChymeMemory {
-  /// How long a conversation stays.
-  static const Duration lifetime = Duration(hours: 1);
-
-  static final List<ChymeTurn> turns = <ChymeTurn>[];
-
-  static DateTime? _started;
-
-  /// The conversation, emptied first if it has expired.
-  static List<ChymeTurn> get current {
-    if (_started != null && DateTime.now().difference(_started!) > lifetime) {
-      forget();
-    }
-    return turns;
-  }
-
-  static void remember(List<ChymeTurn> conversation) {
-    _started ??= DateTime.now();
-    turns
-      ..clear()
-      ..addAll(conversation);
-  }
-
-  static void forget() {
-    turns.clear();
-    _started = null;
-  }
-}

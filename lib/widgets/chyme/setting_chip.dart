@@ -1,7 +1,7 @@
 part of '../chyme_sheet.dart';
 
-class _SettingChip extends StatelessWidget {
-  const _SettingChip({
+class ChymeSettingChip extends StatelessWidget {
+  const ChymeSettingChip({
     required this.label,
     required this.icon,
     required this.onTap,

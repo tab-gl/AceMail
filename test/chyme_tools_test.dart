@@ -61,16 +61,16 @@ void main() {
 
     test('the tools that change mail are the ones that wait for a button', () {
       // Reading is what it was asked to do; changing mail is not.
-      for (final String read in <String>['search', 'read', 'contacts']) {
+      for (final String read in <String>['mail_search', 'message_read', 'contact_search']) {
         expect(ChymeTools.mutates(read), isFalse, reason: read);
       }
       for (final String writes in <String>[
-        'star',
-        'unstar',
-        'seen',
-        'archive',
-        'delete',
-        'reply',
+        'message_star',
+        'message_unstar',
+        'message_mark_read',
+        'message_archive',
+        'message_delete',
+        'message_reply',
         'contact_add',
         'contact_block',
         'contact_delete',
@@ -83,6 +83,11 @@ void main() {
       // The safe answer for an unknown name: propose it, do not run it.
       expect(ChymeTools.mutates('launch_missiles'), isTrue);
       expect(ChymeTools.byName('launch_missiles'), isNull);
+    });
+
+    test('the runtime handler contract can be checked without a widget', () {
+      expect(ChymeTools.missingHandlers(ChymeTools.names), isEmpty);
+      expect(ChymeTools.missingHandlers(<String>['message_read']), contains('mail_search'));
     });
 
     test('every spec has a name, an argument and a description', () {

@@ -1,7 +1,7 @@
 part of '../chyme_sheet.dart';
 
-class _Bubble extends StatelessWidget {
-  const _Bubble({
+class ChymeBubble extends StatelessWidget {
+  const ChymeBubble({
     required this.turn,
     required this.onReply,
     this.canReply = false,
@@ -19,9 +19,8 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final AstryxColors c = context.astryx;
     final bool mine = turn.role == 'user';
-    final String text = mine
-        ? turn.content
-        : Chyme.withoutSearchLine(turn.content);
+    final ChymeReply parsed = ChymeReply.parse(turn.content);
+    final String text = mine ? turn.content : parsed.text;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: AstryxSpace.s3),
@@ -59,7 +58,7 @@ class _Bubble extends StatelessWidget {
                 ),
                 // Only when the reply asked to delete, and only as a question.
                 // A model may propose; the app asks; the person decides.
-                if (Chyme.deleteFrom(text))
+                if (parsed.deleteRequested)
                   AceIconButton(
                     icon: AceIcons.trash,
                     tooltip: 'Delete this message',

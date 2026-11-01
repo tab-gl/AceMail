@@ -1,34 +1,26 @@
 import 'package:ace_mail/services/chyme.dart';
+import 'package:ace_mail/state/chyme_conversation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  setUp(ChymeMemory.forget);
-  tearDown(ChymeMemory.forget);
-
-  test('a conversation is remembered between openings', () {
-    ChymeMemory.remember(<ChymeTurn>[const ChymeTurn('user', 'hello')]);
-    expect(ChymeMemory.current, hasLength(1));
-    expect(ChymeMemory.current.first.content, 'hello');
+  test('conversation is shared, ordered and observable', () {
+    final ChymeConversation conversation = ChymeConversation();
+    int notifications = 0;
+    conversation.addListener(() => notifications++);
+    conversation.add(const ChymeTurn('user', 'hello'));
+    conversation.add(const ChymeTurn('assistant', 'hello back'));
+    expect(conversation.turns.map((ChymeTurn turn) => turn.content), ['hello', 'hello back']);
+    expect(notifications, 2);
+    conversation.clear();
+    expect(conversation.turns, isEmpty);
+    expect(notifications, 3);
   });
 
-  test('it expires after an hour, on its own', () {
-    // The sheet used to carry a "start over" button for this. A conversation
-    // that tidies itself is one fewer control to explain.
-    expect(ChymeMemory.lifetime, const Duration(hours: 1));
-
-    ChymeMemory.remember(<ChymeTurn>[const ChymeTurn('user', 'old')]);
-    // Nothing can make time pass here, so the boundary is asserted directly:
-    // an expired conversation is emptied the next time it is read.
-    ChymeMemory.forget();
-    expect(ChymeMemory.current, isEmpty);
-  });
-
-  test('forgetting empties it and the next conversation starts the clock', () {
-    ChymeMemory.remember(<ChymeTurn>[const ChymeTurn('user', 'a')]);
-    ChymeMemory.forget();
-    expect(ChymeMemory.current, isEmpty);
-
-    ChymeMemory.remember(<ChymeTurn>[const ChymeTurn('user', 'b')]);
-    expect(ChymeMemory.current.single.content, 'b');
+  test('conversation expires after one hour without disk persistence', () {
+    DateTime now = DateTime(2026, 1, 1, 12);
+    final ChymeConversation conversation = ChymeConversation(clock: () => now);
+    conversation.add(const ChymeTurn('user', 'private mail context'));
+    now = now.add(const Duration(hours: 1, minutes: 1));
+    expect(conversation.turns, isEmpty);
   });
 }

@@ -46,8 +46,8 @@ class _SearchOffer extends StatelessWidget {
 }
 
 /// Chyme with nowhere to ask.
-class _NotSetUp extends StatelessWidget {
-  const _NotSetUp({required this.onConfigure});
+class ChymeNotSetUp extends StatelessWidget {
+  const ChymeNotSetUp({required this.onConfigure});
 
   final VoidCallback onConfigure;
 

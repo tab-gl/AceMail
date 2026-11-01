@@ -48,14 +48,18 @@ class _DebouncedWriter {
 
   final Future<void> Function() write;
   Timer? _timer;
-  Future<void>? _inFlight;
+  Future<void> _inFlight = Future<void>.value();
+
+  void _enqueue() {
+    _inFlight = _inFlight.then((_) => write());
+    unawaited(_inFlight);
+  }
 
   void schedule() {
     _timer?.cancel();
     _timer = Timer(const Duration(seconds: 2), () {
       _timer = null;
-      _inFlight = write();
-      unawaited(_inFlight);
+      _enqueue();
     });
   }
 
@@ -63,12 +67,10 @@ class _DebouncedWriter {
     _timer?.cancel();
     if (_timer != null) {
       _timer = null;
-      _inFlight = write();
+      _enqueue();
     }
     await _inFlight;
   }
-
-  void dispose() => _timer?.cancel();
 }
 
 
@@ -385,10 +387,11 @@ class ContactsStore implements ContactsStoreApi {
 
   @override
   Future<void> setSaved(String email, bool saved) async {
+    await load();
     final String key = email.trim().toLowerCase();
     final Contact? existing = _byEmail[key];
     if (existing == null) {
-      if (!saved || key.isEmpty || !key.contains('@')) return;
+      if (!saved || key.isEmpty || !key.contains('@') || isMachineAddress(key)) return;
       _byEmail[key] = Contact(email: key, saved: true);
     } else {
       if (existing.saved == saved) return;
@@ -400,6 +403,7 @@ class ContactsStore implements ContactsStoreApi {
 
   @override
   Future<Contact> add({required String email, String name = ''}) async {
+    await load();
     final String key = email.trim().toLowerCase();
     if (key.isEmpty || !key.contains('@')) throw ArgumentError.value(email, 'email', 'A valid email address is required.');
     final Contact contact = (_byEmail[key] ?? Contact(email: key)).copyWith(name: name.trim(), saved: true);
@@ -411,6 +415,7 @@ class ContactsStore implements ContactsStoreApi {
 
   @override
   Future<void> remove(String email) async {
+    await load();
     final String key = email.trim().toLowerCase();
     final bool had = _byEmail.remove(key) != null;
     final bool blocked = await _blockList.remove(key);
@@ -421,6 +426,7 @@ class ContactsStore implements ContactsStoreApi {
 
   @override
   Future<int> importContacts(Iterable<Contact> incoming) async {
+    await load();
     int changed = 0;
     for (final Contact contact in incoming) {
       final String key = contact.email.trim().toLowerCase();
@@ -437,6 +443,7 @@ class ContactsStore implements ContactsStoreApi {
 
   @override
   Future<void> forgetSeen() async {
+    await load();
     final int before = _byEmail.length;
     _byEmail.removeWhere((_, Contact contact) => !contact.saved);
     if (_byEmail.length == before) return;
@@ -444,7 +451,7 @@ class ContactsStore implements ContactsStoreApi {
     await _persist();
   }
 
-  void dispose() => _writer.dispose();
+  void dispose() => unawaited(_writer.flush());
 }
 
 /// Backwards-compatible application façade. Production code can migrate to an

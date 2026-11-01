@@ -1,7 +1,7 @@
 part of '../chyme_sheet.dart';
 
-class _SuggestionArc extends StatelessWidget {
-  const _SuggestionArc({required this.prompts, required this.onPick});
+class ChymeSuggestionArc extends StatelessWidget {
+  const ChymeSuggestionArc({required this.prompts, required this.onPick});
 
   final List<_Prompt> prompts;
   final void Function(String prompt) onPick;

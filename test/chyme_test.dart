@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ace_mail/services/chyme.dart';
+import 'package:ace_mail/services/chyme_tools.dart';
 import 'package:ace_mail/util/text.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -201,4 +202,21 @@ void main() {
       expect(mentionsAttachment('That attachmenty thing'), isFalse);
     });
   });
+  group('typed reply and tool arguments', () {
+    test('parses protocol markers in one pass and strips them from display text', () {
+      final ChymeReply reply = ChymeReply.parse('Answer\nSEARCH: invoice\nDELETE: yes\nTOOL: message_read 42');
+      expect(reply.text, 'Answer');
+      expect(reply.search, 'invoice');
+      expect(reply.deleteRequested, isTrue);
+      expect(reply.tool?.name, 'message_read');
+      expect(reply.tool?.argument, '42');
+    });
+
+    test('splits a tool argument only at its first pipe', () {
+      final ChymeToolArgument parsed = ChymeToolArgument.parse('12 | first | second');
+      expect(parsed.head, '12');
+      expect(parsed.tail, 'first | second');
+    });
+  });
+
 }
