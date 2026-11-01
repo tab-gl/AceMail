@@ -15,6 +15,7 @@ void main() {
 
   tearDown(() async {
     store.dispose();
+    Contacts.resetForTesting();
     if (await directory.exists()) await directory.delete(recursive: true);
   });
 
@@ -61,4 +62,12 @@ void main() {
     expect(restored.isBlocked('blocked@example.com'), isFalse);
     restored.dispose();
   });
+  test('legacy Contacts facade can be injected and reset for tests', () async {
+    Contacts.useStoreForTesting(store);
+    await Contacts.load();
+    await Contacts.add(email: 'injected@example.com', name: 'Injected');
+    expect(Contacts.byEmail('injected@example.com')?.saved, isTrue);
+    Contacts.resetForTesting();
+  });
+
 }

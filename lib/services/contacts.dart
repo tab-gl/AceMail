@@ -457,25 +457,32 @@ class ContactsStore implements ContactsStoreApi {
 /// Backwards-compatible application façade. Production code can migrate to an
 /// injected [ContactsStore]; existing UI and session call sites remain stable.
 abstract final class Contacts {
-  static final ContactsStore _default = ContactsStore();
+  static ContactsStoreApi _store = ContactsStore();
+
+  @visibleForTesting
+  static void useStoreForTesting(ContactsStoreApi store) => _store = store;
+
+  @visibleForTesting
+  static void resetForTesting() => _store = ContactsStore();
+
   static const int limit = ContactsStore.limit;
-  static int get revision => _default.revision;
-  static bool get isEmpty => _default.isEmpty;
-  static List<Contact> get all => _default.all;
-  static List<String> get blocked => _default.blocked;
-  static bool isBlocked(String email) => _default.isBlocked(email);
-  static Future<void> block(String email) => _default.block(email);
-  static Future<void> unblock(String email) => _default.unblock(email);
-  static List<Contact> search(String query) => _default.search(query);
-  static Contact? byEmail(String email) => _default.byEmail(email);
-  static Future<void> load() => _default.load();
-  static Future<void> flush() => _default.flush();
-  static void observe(List<MessageSummary> messages) => _default.observe(messages);
-  static void recordSent(Iterable<String> addresses, {DateTime? when}) => _default.recordSent(addresses, when: when);
-  static void observeRecipients(FullMessage message) => _default.observeRecipients(message);
-  static Future<void> setSaved(String email, bool saved) => _default.setSaved(email, saved);
-  static Future<Contact> add({required String email, String name = ''}) => _default.add(email: email, name: name);
-  static Future<void> remove(String email) => _default.remove(email);
-  static Future<int> importContacts(Iterable<Contact> incoming) => _default.importContacts(incoming);
-  static Future<void> forgetSeen() => _default.forgetSeen();
+  static int get revision => _store.revision;
+  static bool get isEmpty => _store.isEmpty;
+  static List<Contact> get all => _store.all;
+  static List<String> get blocked => _store.blocked;
+  static bool isBlocked(String email) => _store.isBlocked(email);
+  static Future<void> block(String email) => _store.block(email);
+  static Future<void> unblock(String email) => _store.unblock(email);
+  static List<Contact> search(String query) => _store.search(query);
+  static Contact? byEmail(String email) => _store.byEmail(email);
+  static Future<void> load() => _store.load();
+  static Future<void> flush() => _store.flush();
+  static void observe(List<MessageSummary> messages) => _store.observe(messages);
+  static void recordSent(Iterable<String> addresses, {DateTime? when}) => _store.recordSent(addresses, when: when);
+  static void observeRecipients(FullMessage message) => _store.observeRecipients(message);
+  static Future<void> setSaved(String email, bool saved) => _store.setSaved(email, saved);
+  static Future<Contact> add({required String email, String name = ''}) => _store.add(email: email, name: name);
+  static Future<void> remove(String email) => _store.remove(email);
+  static Future<int> importContacts(Iterable<Contact> incoming) => _store.importContacts(incoming);
+  static Future<void> forgetSeen() => _store.forgetSeen();
 }
