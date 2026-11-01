@@ -202,8 +202,11 @@ class ContactsStore implements ContactsStoreApi {
   Future<void>? _loading;
   late final BlockListStore _blockList = BlockListStore(directory: _directory, onError: _onError);
   int _revision = 0;
+  @override
   int get revision => _revision;
+  @override
   bool get isEmpty => _byEmail.isEmpty;
+  @override
   List<String> get blocked => _blockList.all;
 
   late final _DebouncedWriter _writer = _DebouncedWriter(_persist);
@@ -221,6 +224,7 @@ class ContactsStore implements ContactsStoreApi {
     return _contactsFile ??= _JsonFileStore(directory, fileName);
   }
 
+  @override
   List<Contact> get all {
     final List<Contact> contacts = _byEmail.values.toList()
       ..sort((Contact a, Contact b) {
@@ -235,6 +239,7 @@ class ContactsStore implements ContactsStoreApi {
     return contacts;
   }
 
+  @override
   Future<void> load() async {
     await Future.wait<void>(<Future<void>>[
       _loading ??= _load(),
@@ -265,16 +270,20 @@ class ContactsStore implements ContactsStoreApi {
     }
   }
 
+  @override
   bool isBlocked(String email) => _blockList.contains(email);
 
+  @override
   Future<void> block(String email) async {
     if (await _blockList.block(email)) _revision++;
   }
 
+  @override
   Future<void> unblock(String email) async {
     if (await _blockList.unblock(email)) _revision++;
   }
 
+  @override
   List<Contact> search(String query) {
     final String needle = query.trim().toLowerCase();
     if (needle.isEmpty) return all;
@@ -282,10 +291,12 @@ class ContactsStore implements ContactsStoreApi {
       contact.email.toLowerCase().contains(needle) || contact.name.toLowerCase().contains(needle)).toList();
   }
 
+  @override
   Contact? byEmail(String email) => _byEmail[email.trim().toLowerCase()];
 
   void _schedulePersist() => _writer.schedule();
 
+  @override
   Future<void> flush() => _writer.flush();
 
   Future<void> _persist() async {
@@ -356,19 +367,23 @@ class ContactsStore implements ContactsStoreApi {
     }
   }
 
+  @override
   void observe(List<MessageSummary> messages) => _recordAll(messages.map((MessageSummary message) => (
     email: message.fromEmail, name: message.fromName, when: message.date,
   )));
 
+  @override
   void recordSent(Iterable<String> addresses, {DateTime? when}) => _recordAll(addresses.map((String email) => (
     email: email, name: '', when: when,
   )));
 
+  @override
   void observeRecipients(FullMessage message) => _recordAll(<_SeenAddress>[
     for (final String email in <String>[...message.toEmails.split(','), ...message.ccEmails.split(',')])
       (email: email, name: '', when: message.date),
   ]);
 
+  @override
   Future<void> setSaved(String email, bool saved) async {
     final String key = email.trim().toLowerCase();
     final Contact? existing = _byEmail[key];
@@ -383,6 +398,7 @@ class ContactsStore implements ContactsStoreApi {
     await _persist();
   }
 
+  @override
   Future<Contact> add({required String email, String name = ''}) async {
     final String key = email.trim().toLowerCase();
     if (key.isEmpty || !key.contains('@')) throw ArgumentError.value(email, 'email', 'A valid email address is required.');
@@ -393,6 +409,7 @@ class ContactsStore implements ContactsStoreApi {
     return contact;
   }
 
+  @override
   Future<void> remove(String email) async {
     final String key = email.trim().toLowerCase();
     final bool had = _byEmail.remove(key) != null;
@@ -402,6 +419,7 @@ class ContactsStore implements ContactsStoreApi {
     await _persist();
   }
 
+  @override
   Future<int> importContacts(Iterable<Contact> incoming) async {
     int changed = 0;
     for (final Contact contact in incoming) {
@@ -417,6 +435,7 @@ class ContactsStore implements ContactsStoreApi {
     return changed;
   }
 
+  @override
   Future<void> forgetSeen() async {
     final int before = _byEmail.length;
     _byEmail.removeWhere((_, Contact contact) => !contact.saved);
