@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../data/preferences.dart';
 import 'chyme_tools.dart';
 
 /// One turn of a conversation.
@@ -36,6 +37,36 @@ class ChymeException implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// One validated snapshot of the Chyme preferences used for a request.
+class ChymeConfig {
+  const ChymeConfig({
+    required this.endpoint,
+    required this.apiKey,
+    required this.model,
+    required this.tone,
+    required this.customPrompt,
+    required this.readsMail,
+  });
+
+  factory ChymeConfig.fromPreferences(Preferences preferences) => ChymeConfig(
+        endpoint: preferences.chymeEndpoint.trim(),
+        apiKey: preferences.chymeKey,
+        model: preferences.chymeModel.trim(),
+        tone: preferences.chymeTone,
+        customPrompt: preferences.chymePrompt,
+        readsMail: preferences.chymeReadsMail,
+      );
+
+  final String endpoint;
+  final String apiKey;
+  final String model;
+  final ChymeTone tone;
+  final String customPrompt;
+  final bool readsMail;
+
+  bool get isConfigured => endpoint.isNotEmpty && model.isNotEmpty;
 }
 
 /// Chyme: the assistant, which talks to an endpoint **you** point it at.
@@ -92,7 +123,14 @@ enum ChymeTone {
 }
 
 abstract final class Chyme {
+  static bool isConfigured(Preferences preferences) => ChymeConfig.fromPreferences(preferences).isConfigured;
+
   static const Duration _timeout = Duration(seconds: 90);
+  static const int maxBodyCharacters = 6000;
+
+  static String truncateBody(String value) => value.length <= maxBodyCharacters
+      ? value
+      : '${value.substring(0, maxBodyCharacters)}…';
 
   /// What the assistant is told about itself, and what it is allowed to assume.
   ///
@@ -554,14 +592,8 @@ class ChymeRun {
 /// One tool: takes the argument the model wrote, returns what it should see.
 typedef ChymeTool = Future<String?> Function(String argument);
 
-/// The conversation, kept between openings of the sheet.
-///
-/// Closing Chyme and opening it again used to start from nothing, which is the
-/// opposite of what a conversation is — the second question almost always refers
-/// to the first answer. Memory rather than disk: this is a scratchpad for the
-/// session, not a chat log, and a transcript of somebody's mail is not something
-/// to leave on the device.
-/// What Chyme remembers between openings of the sheet.
+/// Session-scoped conversation memory. It is intentionally in-memory only; no
+/// transcript or mail content is written to disk.
 ///
 /// One conversation, and it expires. A chat that lives forever becomes a
 /// document nobody tidied: the assistant's context grows, the answers drift

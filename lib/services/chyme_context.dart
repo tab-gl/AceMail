@@ -1,6 +1,7 @@
 import '../models/full_message.dart';
 import '../models/message_summary.dart';
 import '../util/dates.dart';
+import 'chyme.dart';
 
 /// What Chyme is told about the mail on screen.
 ///
@@ -17,13 +18,7 @@ abstract final class ChymeContext {
   /// a mailbox with thirty. The full bodies are not here — only what the list
   /// already shows.
   static const int maxSummaries = 25;
-
-  /// How much of the open message's body travels with the prompt.
-  ///
-  /// Six thousand characters covers an ordinary email and its quoted history,
-  /// and stops a newsletter with a hundred thousand characters of tracking
-  /// markup from being the whole request. The `read` tool exists for the rest.
-  static const int maxBodyCharacters = 6000;
+  static const int maxBodyCharacters = Chyme.maxBodyCharacters;
 
   /// The context block for [visible] and [open], or a sentence saying there is
   /// nothing to read.
@@ -62,9 +57,7 @@ abstract final class ChymeContext {
         ..writeln('Date: ${open.date}')
         ..writeln('--- body ---')
         ..writeln(
-          body.length > maxBodyCharacters
-              ? body.substring(0, maxBodyCharacters)
-              : body,
+          Chyme.truncateBody(body),
         );
     }
 

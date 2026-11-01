@@ -2,62 +2,226 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/contact.dart';
 import '../util/addresses.dart';
 import '../models/full_message.dart';
 import '../models/message_summary.dart';
+import '../util/redact.dart';
 
-/// The addresses this app has seen, and the ones the person saved.
-///
-/// Two kinds of contact, deliberately kept apart in the record and together in
-/// the list. **Saved** is a decision — somebody the person chose to keep.
-/// **Seen** is a fact — an address that has written to them, or that they have
-/// written to. A contact book that only holds what you remembered to add is
-/// empty, and one that treats every address as equal is noise; showing both,
-/// marked, is what a mail client can actually offer.
-///
-/// Kept in a plain file rather than the vault. Addresses are not secrets — they
-/// are on the envelope of every message — and the vault exists for what is
-/// inside. It is bounded, because a mail client that keeps every address it has
-/// ever seen forever is a mail client that grows without limit.
-abstract final class Contacts {
-  /// How many are kept. The most recently seen go first when it is full, so
-  /// what is dropped is what has not been used in the longest time.
+/// One JSON list on disk. Missing files are normal; malformed or unreadable
+/// files are surfaced to the store's diagnostic callback and are never replaced
+/// by an empty list as a side effect of reading.
+class _JsonFileStore {
+  _JsonFileStore(this.directory, this.fileName);
+
+  final Directory directory;
+  final String fileName;
+  Future<File>? _resolved;
+
+  Future<File> get file => _resolved ??= Future<File>(() async {
+        await directory.create(recursive: true);
+        return File('${directory.path}/$fileName');
+      });
+
+  Future<List<dynamic>?> read() async {
+    final File target = await file;
+    if (!await target.exists()) return null;
+    final Object? decoded = jsonDecode(await target.readAsString());
+    if (decoded is! List) {
+      throw FormatException('$fileName must contain a JSON list.');
+    }
+    return decoded;
+  }
+
+  Future<void> write(List<dynamic> rows) async {
+    await (await file).writeAsString(jsonEncode(rows), flush: true);
+  }
+}
+
+/// A shared two-second debounce with an awaitable flush, including a write
+/// that has already started when the app is closing.
+class _DebouncedWriter {
+  _DebouncedWriter(this.write);
+
+  final Future<void> Function() write;
+  Timer? _timer;
+  Future<void>? _inFlight;
+
+  void schedule() {
+    _timer?.cancel();
+    _timer = Timer(const Duration(seconds: 2), () {
+      _timer = null;
+      _inFlight = write();
+      unawaited(_inFlight);
+    });
+  }
+
+  Future<void> flush() async {
+    _timer?.cancel();
+    if (_timer != null) {
+      _timer = null;
+      _inFlight = write();
+    }
+    await _inFlight;
+  }
+
+  void dispose() => _timer?.cancel();
+}
+
+
+/// The block list is a separate concern and file, with its own retryable load
+/// and persistence lifecycle.
+class BlockListStore {
+  BlockListStore({
+    Directory? directory,
+    void Function(String operation, Object error, StackTrace stackTrace)? onError,
+  })  : _directory = directory,
+        _onError = onError;
+
+  final Directory? _directory;
+  final void Function(String, Object, StackTrace)? _onError;
+  final Set<String> _addresses = <String>{};
+  _JsonFileStore? _file;
+  Future<void>? _loading;
+
+  List<String> get all => _addresses.toList()..sort();
+  bool contains(String email) => _addresses.contains(email.trim().toLowerCase());
+
+  void _report(String operation, Object error, StackTrace stack) {
+    if (_onError != null) {
+      _onError(operation, error, stack);
+    } else {
+      debugPrint('Ace Mail: $operation failed (${Redact.safe(error)})');
+    }
+  }
+
+  Future<_JsonFileStore> _store() async {
+    final Directory directory = _directory ?? await getApplicationSupportDirectory();
+    return _file ??= _JsonFileStore(directory, ContactsStore.blockedFileName);
+  }
+
+  Future<void> load() => _loading ??= _load();
+
+  Future<void> _load() async {
+    try {
+      final List<dynamic>? rows = await (await _store()).read();
+      if (rows != null) {
+        _addresses
+          ..clear()
+          ..addAll(rows.whereType<String>().map((String value) => value.trim().toLowerCase()).where((String value) => value.isNotEmpty));
+      }
+    } on FileSystemException catch (error, stack) {
+      _report('read block list', error, stack);
+      _loading = null;
+    } on FormatException catch (error, stack) {
+      _report('decode block list', error, stack);
+      _loading = null;
+    } catch (error, stack) {
+      _report('load block list', error, stack);
+      _loading = null;
+    }
+  }
+
+  Future<bool> block(String email) async {
+    await load();
+    final String key = email.trim().toLowerCase();
+    if (key.isEmpty || !_addresses.add(key)) return false;
+    await _persist();
+    return true;
+  }
+
+  Future<bool> unblock(String email) async {
+    await load();
+    if (!_addresses.remove(email.trim().toLowerCase())) return false;
+    await _persist();
+    return true;
+  }
+
+  Future<bool> remove(String email) async {
+    await load();
+    if (!_addresses.remove(email.trim().toLowerCase())) return false;
+    await _persist();
+    return true;
+  }
+
+  Future<void> _persist() async {
+    try {
+      await (await _store()).write(all);
+    } catch (error, stack) {
+      _report('write block list', error, stack);
+    }
+  }
+}
+
+typedef _SeenAddress = ({String email, String name, DateTime? when});
+
+/// The operations the UI and session need from an address book.
+abstract interface class ContactsStoreApi {
+  int get revision;
+  bool get isEmpty;
+  List<Contact> get all;
+  List<String> get blocked;
+  bool isBlocked(String email);
+  Future<void> load();
+  Future<void> flush();
+  List<Contact> search(String query);
+  Contact? byEmail(String email);
+  Future<void> block(String email);
+  Future<void> unblock(String email);
+  void observe(List<MessageSummary> messages);
+  void recordSent(Iterable<String> addresses, {DateTime? when});
+  void observeRecipients(FullMessage message);
+  Future<void> setSaved(String email, bool saved);
+  Future<Contact> add({required String email, String name = ''});
+  Future<void> remove(String email);
+  Future<int> importContacts(Iterable<Contact> incoming);
+  Future<void> forgetSeen();
+}
+
+/// Injectable address-book and block-list storage. A test can provide a
+/// temporary directory and diagnostic sink; production uses application
+/// support storage. The legacy [Contacts] façade below preserves callers.
+class ContactsStore implements ContactsStoreApi {
+  ContactsStore({
+    Directory? directory,
+    void Function(String operation, Object error, StackTrace stackTrace)? onError,
+  })  : _directory = directory,
+        _onError = onError;
+
   static const int limit = 600;
+  static const String fileName = 'contacts.json';
+  static const String blockedFileName = 'blocked.json';
 
-  static final Map<String, Contact> _byEmail = <String, Contact>{};
+  final Directory? _directory;
+  final void Function(String, Object, StackTrace)? _onError;
+  final Map<String, Contact> _byEmail = <String, Contact>{};
+  _JsonFileStore? _contactsFile;
+  Future<void>? _loading;
+  late final BlockListStore _blockList = BlockListStore(directory: _directory, onError: _onError);
+  int _revision = 0;
+  int get revision => _revision;
+  bool get isEmpty => _byEmail.isEmpty;
+  List<String> get blocked => _blockList.all;
 
-  /// Addresses whose mail is kept out of the list.
-  ///
-  /// Blocking is a *filter*, not a rule on the server: nothing is moved, deleted
-  /// or reported anywhere, and unblocking brings the mail straight back. A block
-  /// that destroyed things would be a block nobody dared use.
-  static final Set<String> _blocked = <String>{};
-  static bool _blockedLoaded = false;
-  static File? _blockedFile;
-  static bool _loaded = false;
-  static File? _file;
+  late final _DebouncedWriter _writer = _DebouncedWriter(_persist);
 
-  /// Bumped whenever the book changes in a way a cached list would not see.
-  ///
-  /// The message list filters blocked senders and is cached between rebuilds;
-  /// without a counter, blocking somebody would leave their mail on screen
-  /// until something else moved. One integer is cheaper than invalidating every
-  /// cache by hand.
-  static int revision = 0;
+  void _report(String operation, Object error, StackTrace stackTrace) {
+    if (_onError != null) {
+      _onError(operation, error, stackTrace);
+      return;
+    }
+    debugPrint('Ace Mail: $operation failed (${Redact.safe(error)})');
+  }
 
-  /// Whether anything has been loaded or seen. The screen uses this to tell
-  /// "no contacts yet" from "not read yet".
-  static bool get isEmpty => _byEmail.isEmpty;
+  Future<_JsonFileStore> _store() async {
+    final Directory directory = _directory ?? await getApplicationSupportDirectory();
+    return _contactsFile ??= _JsonFileStore(directory, fileName);
+  }
 
-  /// Everyone, saved first, then by how recently they were seen.
-  ///
-  /// Saved first because a decision outranks a coincidence: somebody you chose
-  /// to keep should not be pushed below an address that happened to send you a
-  /// receipt this morning.
-  static List<Contact> get all {
+  List<Contact> get all {
     final List<Contact> contacts = _byEmail.values.toList()
       ..sort((Contact a, Contact b) {
         if (a.saved != b.saved) return a.saved ? -1 : 1;
@@ -71,145 +235,73 @@ abstract final class Contacts {
     return contacts;
   }
 
-  /// Whether [email] is blocked. Case-insensitive, because an address is.
-  static bool isBlocked(String email) =>
-      _blocked.contains(email.trim().toLowerCase());
-
-  /// Every blocked address, in order.
-  static List<String> get blocked => _blocked.toList()..sort();
-
-  /// Keeps [email]'s mail out of the list, from now on.
-  static Future<void> block(String email) async {
-    await _ensureBlocked();
-    final String key = email.trim().toLowerCase();
-    if (key.isEmpty || !_blocked.add(key)) return;
-    revision++;
-    await _persistBlocked();
+  Future<void> load() async {
+    await Future.wait<void>(<Future<void>>[
+      _loading ??= _load(),
+      _blockList.load(),
+    ]);
   }
 
-  /// Lets it back in. Everything it sent is still there.
-  static Future<void> unblock(String email) async {
-    await _ensureBlocked();
-    if (!_blocked.remove(email.trim().toLowerCase())) return;
-    revision++;
-    await _persistBlocked();
-  }
-
-  static Future<void> _ensureBlocked() async {
-    if (_blockedLoaded) return;
-    _blockedLoaded = true;
+  Future<void> _load() async {
     try {
-      await _ensureFile();
-      _blockedFile = File('${_file!.parent.path}/blocked.json');
-      if (!await _blockedFile!.exists()) return;
-      final Object? decoded = jsonDecode(await _blockedFile!.readAsString());
-      if (decoded is! List) return;
-      _blocked
-        ..clear()
-        ..addAll(decoded.whereType<String>().map((String s) => s.toLowerCase()));
-    } catch (_) {
-      // A file that will not read is an empty blocklist, not a crash.
+      final List<dynamic>? rows = await (await _store()).read();
+      if (rows != null) {
+        for (final Object? entry in rows) {
+          if (entry is! Map<String, dynamic>) continue;
+          final Contact contact = Contact.fromJson(entry);
+          if (contact.email.isEmpty) continue;
+          _byEmail[contact.email.toLowerCase()] = contact;
+        }
+      }
+    } on FileSystemException catch (error, stack) {
+      _report('read contacts file', error, stack);
+      _loading = null;
+    } on FormatException catch (error, stack) {
+      _report('decode contacts file', error, stack);
+      _loading = null;
+    } catch (error, stack) {
+      _report('load contacts', error, stack);
+      _loading = null;
     }
   }
 
-  static Future<void> _persistBlocked() async {
-    try {
-      await _ensureBlocked();
-      await _blockedFile!.writeAsString(jsonEncode(blocked), flush: true);
-    } catch (_) {
-      // Losing the file loses the blocklist. Nothing else is affected, and
-      // nothing has been destroyed on the server either way.
-    }
+  bool isBlocked(String email) => _blockList.contains(email);
+
+  Future<void> block(String email) async {
+    if (await _blockList.block(email)) _revision++;
   }
 
-  /// The ones worth showing for [query]. Empty query means everyone.
-  static List<Contact> search(String query) {
+  Future<void> unblock(String email) async {
+    if (await _blockList.unblock(email)) _revision++;
+  }
+
+  List<Contact> search(String query) {
     final String needle = query.trim().toLowerCase();
     if (needle.isEmpty) return all;
-    return all
-        .where((Contact c) =>
-            c.email.toLowerCase().contains(needle) ||
-            c.name.toLowerCase().contains(needle))
-        .toList();
+    return all.where((Contact contact) =>
+      contact.email.toLowerCase().contains(needle) || contact.name.toLowerCase().contains(needle)).toList();
   }
 
-  static Contact? byEmail(String email) =>
-      _byEmail[email.trim().toLowerCase()];
+  Contact? byEmail(String email) => _byEmail[email.trim().toLowerCase()];
 
-  static Future<void> _ensureFile() async {
-    if (_file != null) return;
-    final Directory directory =
-        await getApplicationSupportDirectory();
-    _file = File('${directory.path}/contacts.json');
-  }
+  void _schedulePersist() => _writer.schedule();
 
-  /// Reads what was kept. Safe to call more than once.
-  static Future<void> load() async {
-    if (_loaded) return;
-    _loaded = true;
+  Future<void> flush() => _writer.flush();
+
+  Future<void> _persist() async {
     try {
-      await _ensureFile();
-      final File file = _file!;
-      if (!await file.exists()) return;
-      final Object? decoded = jsonDecode(await file.readAsString());
-      if (decoded is! List) return;
-      for (final Object? entry in decoded) {
-        if (entry is! Map<String, dynamic>) continue;
-        final Contact contact = Contact.fromJson(entry);
-        if (contact.email.isEmpty) continue;
-        _byEmail[contact.email.toLowerCase()] = contact;
-      }
-    } catch (_) {
-      // An unreadable contact file is not worth an error: the addresses are
-      // still in the mail, and the list fills up again as it loads.
-    }
-  }
-
-  /// A write waiting to happen, so that a folder load is one write and not
-  /// forty.
-  ///
-  /// The addresses arrive a page at a time as folders load, and writing the
-  /// whole book on every page is the same file rewritten several times a
-  /// second for a file that changes slowly. A decision the person made goes
-  /// straight to disk; what the mail told us waits a moment.
-  static Timer? _writeSoon;
-
-  static void _schedulePersist() {
-    _writeSoon?.cancel();
-    _writeSoon = Timer(const Duration(seconds: 2), () {
-      _writeSoon = null;
-      unawaited(_persist());
-    });
-  }
-
-  /// Writes anything pending, now.
-  static Future<void> flush() async {
-    if (_writeSoon == null) return;
-    _writeSoon!.cancel();
-    _writeSoon = null;
-    await _persist();
-  }
-
-  static Future<void> _persist() async {
-    try {
-      await _ensureFile();
       _trim();
-      await _file!.writeAsString(
-        jsonEncode(<Object>[for (final Contact c in all) c.toJson()]),
-        flush: true,
-      );
-    } catch (_) {
-      // Losing the file loses the "saved" marks, which is a real loss but not
-      // one worth interrupting anybody over.
+      await (await _store()).write(<Object>[
+        for (final Contact contact in all) contact.toJson(),
+      ]);
+    } catch (error, stack) {
+      _report('write contacts file', error, stack);
     }
   }
 
-  static void _trim() {
+  void _trim() {
     if (_byEmail.length <= limit) return;
-    // Saved ones are never dropped; the rest go oldest-first.
-    final List<Contact> droppable = _byEmail.values
-        .where((Contact c) => !c.saved)
-        .toList()
+    final List<Contact> droppable = _byEmail.values.where((Contact contact) => !contact.saved).toList()
       ..sort((Contact a, Contact b) {
         final DateTime x = a.lastSeen ?? DateTime.fromMillisecondsSinceEpoch(0);
         final DateTime y = b.lastSeen ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -221,180 +313,143 @@ abstract final class Contacts {
     }
   }
 
-  /// Records who a page of mail is from.
-  ///
-  /// Called as pages load, so the list grows with use rather than needing a
-  /// scan of the whole mailbox. Senders only: a summary does not carry the
-  /// recipients, and guessing them from a folder would put the account holder
-  /// in their own contact list.
-  static void observe(List<MessageSummary> messages) {
-    bool changed = false;
-    for (final MessageSummary message in messages) {
-      changed |= _record(message.fromEmail, message.fromName, message.date);
-    }
-    if (changed) {
-      revision++;
-      _schedulePersist();
-    }
-  }
-
-  /// Records who an opened message was sent to.
-  ///
-  /// The only place the recipients appear — a list row carries the sender and
-  /// nothing else — and they come without names, because the model keeps the
-  /// addresses as a plain string. A name arrives later, from mail they send.
-  /// Records the people a message was sent to.
-  ///
-  /// Called when a message goes out, not only when one is opened. Loading the
-  /// Sent folder does not do this: every message in it has *you* in the From
-  /// line, so a book built from senders learns your own address and none of the
-  /// people you actually write to. The addresses you chose at send time are the
-  /// only place that information exists.
-  static void recordSent(Iterable<String> addresses, {DateTime? when}) {
-    bool changed = false;
-    for (final String email in addresses) {
-      changed |= _record(email, '', when);
-    }
-    if (changed) {
-      revision++;
-      _schedulePersist();
-    }
-  }
-
-  static void observeRecipients(FullMessage message) {
-    bool changed = false;
-    for (final String email in <String>[
-      ...message.toEmails.split(','),
-      ...message.ccEmails.split(','),
-    ]) {
-      changed |= _record(email, '', message.date);
-    }
-    if (changed) {
-      revision++;
-      _schedulePersist();
-    }
-  }
-
-  static bool _record(String email, String name, DateTime? when) {
+  bool _record(
+    String email,
+    String name,
+    DateTime? when, {
+    bool saved = false,
+    bool incrementCount = true,
+    bool preserveExistingName = false,
+  }) {
     final String key = email.trim().toLowerCase();
-    if (key.isEmpty || !key.contains('@')) return false;
-    // An address at your own domain is usually a machine: a receipt, a
-    // notification, a mailing list. Not a person to offer to write to.
-    if (isMachineAddress(key)) return false;
-
+    if (key.isEmpty || !key.contains('@') || isMachineAddress(key)) return false;
     final Contact? existing = _byEmail[key];
     final String cleanName = name.trim();
     if (existing == null) {
       _byEmail[key] = Contact(
         email: key,
         name: cleanName,
-        count: 1,
+        count: incrementCount ? 1 : 0,
         lastSeen: when,
+        saved: saved,
       );
       return true;
     }
-
-    _byEmail[key] = existing.copyWith(
-      // A name is kept once found, and replaced only by another name — never
-      // wiped by a message that arrived with a bare address.
-      name: cleanName.isEmpty ? existing.name : cleanName,
-      count: existing.count + 1,
-      lastSeen: when ?? existing.lastSeen,
-    );
+    final String nextName = cleanName.isEmpty || (preserveExistingName && existing.name.trim().isNotEmpty)
+        ? existing.name : cleanName;
+    final bool nextSaved = saved || existing.saved;
+    final int nextCount = existing.count + (incrementCount ? 1 : 0);
+    final DateTime? nextSeen = when ?? existing.lastSeen;
+    if (nextName == existing.name && nextSaved == existing.saved && nextCount == existing.count && nextSeen == existing.lastSeen) return false;
+    _byEmail[key] = existing.copyWith(name: nextName, saved: nextSaved, count: nextCount, lastSeen: nextSeen);
     return true;
   }
 
+  void _recordAll(Iterable<_SeenAddress> seen) {
+    bool changed = false;
+    for (final _SeenAddress item in seen) {
+      changed = _record(item.email, item.name, item.when) || changed;
+    }
+    if (changed) {
+      _revision++;
+      _schedulePersist();
+    }
+  }
 
-  /// Saves or forgets one. Forgetting an address the app has seen leaves it in
-  /// the list as an unsaved contact rather than removing it — it is still in
-  /// the mail, and pretending otherwise would be a lie the next page undoes.
-  static Future<void> setSaved(String email, bool saved) async {
-    // A person's decision is written at once; only what the mail volunteered
-    // waits.
+  void observe(List<MessageSummary> messages) => _recordAll(messages.map((MessageSummary message) => (
+    email: message.fromEmail, name: message.fromName, when: message.date,
+  )));
+
+  void recordSent(Iterable<String> addresses, {DateTime? when}) => _recordAll(addresses.map((String email) => (
+    email: email, name: '', when: when,
+  )));
+
+  void observeRecipients(FullMessage message) => _recordAll(<_SeenAddress>[
+    for (final String email in <String>[...message.toEmails.split(','), ...message.ccEmails.split(',')])
+      (email: email, name: '', when: message.date),
+  ]);
+
+  Future<void> setSaved(String email, bool saved) async {
     final String key = email.trim().toLowerCase();
     final Contact? existing = _byEmail[key];
     if (existing == null) {
-      if (!saved) return;
+      if (!saved || key.isEmpty || !key.contains('@')) return;
       _byEmail[key] = Contact(email: key, saved: true);
     } else {
+      if (existing.saved == saved) return;
       _byEmail[key] = existing.copyWith(saved: saved);
     }
+    _revision++;
     await _persist();
   }
 
-  /// Adds an address by hand — from the contact sheet, when somebody types one
-  /// the app has never seen.
-  static Future<Contact> add({required String email, String name = ''}) async {
+  Future<Contact> add({required String email, String name = ''}) async {
     final String key = email.trim().toLowerCase();
-    final Contact contact = (_byEmail[key] ?? Contact(email: key))
-        .copyWith(name: name.trim(), saved: true);
+    if (key.isEmpty || !key.contains('@')) throw ArgumentError.value(email, 'email', 'A valid email address is required.');
+    final Contact contact = (_byEmail[key] ?? Contact(email: key)).copyWith(name: name.trim(), saved: true);
     _byEmail[key] = contact;
-    revision++;
+    _revision++;
     await _persist();
     return contact;
   }
 
-  /// Forgets an address completely.
-  ///
-  /// Distinct from un-saving it: a saved contact that is un-saved goes back to
-  /// being one the app merely saw, which is right for "I did not mean to keep
-  /// this". This is the other request — "I do not want this person in my list at
-  /// all" — and it takes the record out, along with any block on it.
-  static Future<void> remove(String email) async {
+  Future<void> remove(String email) async {
     final String key = email.trim().toLowerCase();
     final bool had = _byEmail.remove(key) != null;
-    final bool blocked = _blocked.remove(key);
+    final bool blocked = await _blockList.remove(key);
     if (!had && !blocked) return;
-    revision++;
-    if (blocked) await _persistBlocked();
+    _revision++;
     await _persist();
   }
 
-  /// Takes a batch of addresses from the device's own address book.
-  ///
-  /// A contact on the device is a decision somebody made already, so these
-  /// arrive **saved** rather than as addresses the app merely noticed. Nothing
-  /// is written back to the device: this is an import, not a sync, and an app
-  /// that edited your address book because you signed in would be a worse
-  /// neighbour than one that only reads it.
-  ///
-  /// Returns how many records were added or changed.
-  ///
-  /// Stops adding at [limit]. The cap is the promise this file makes about
-  /// growth, and a device address book is the one caller that can arrive with
-  /// more addresses than the whole list is allowed to hold — an import that
-  /// quietly blew past it would make the bound a lie. Records already here still
-  /// get their name and their saved mark, whatever the count.
-  static Future<int> importContacts(Iterable<Contact> incoming) async {
+  Future<int> importContacts(Iterable<Contact> incoming) async {
     int changed = 0;
     for (final Contact contact in incoming) {
       final String key = contact.email.trim().toLowerCase();
       if (key.isEmpty || !key.contains('@')) continue;
-      final String name = contact.name.trim();
-      final Contact? existing = _byEmail[key];
-      if (existing == null) {
-        if (_byEmail.length >= limit) continue;
-        _byEmail[key] = Contact(email: key, name: name, saved: true);
-        changed++;
-        continue;
-      }
-      final String merged = existing.name.trim().isEmpty ? name : existing.name;
-      if (merged != existing.name || !existing.saved) {
-        _byEmail[key] = existing.copyWith(name: merged, saved: true);
-        changed++;
-      }
+      if (!_byEmail.containsKey(key) && _byEmail.length >= limit) continue;
+      if (_record(key, contact.name, null, saved: true, incrementCount: false, preserveExistingName: true)) changed++;
     }
     if (changed > 0) {
-      revision++;
+      _revision++;
       await _persist();
     }
     return changed;
   }
 
-  /// Drops the addresses the app merely saw, keeping the saved ones.
-  static Future<void> forgetSeen() async {
-    _byEmail.removeWhere((_, Contact c) => !c.saved);
-    revision++;
+  Future<void> forgetSeen() async {
+    final int before = _byEmail.length;
+    _byEmail.removeWhere((_, Contact contact) => !contact.saved);
+    if (_byEmail.length == before) return;
+    _revision++;
     await _persist();
   }
+
+  void dispose() => _writer.dispose();
+}
+
+/// Backwards-compatible application façade. Production code can migrate to an
+/// injected [ContactsStore]; existing UI and session call sites remain stable.
+abstract final class Contacts {
+  static final ContactsStore _default = ContactsStore();
+  static const int limit = ContactsStore.limit;
+  static int get revision => _default.revision;
+  static bool get isEmpty => _default.isEmpty;
+  static List<Contact> get all => _default.all;
+  static List<String> get blocked => _default.blocked;
+  static bool isBlocked(String email) => _default.isBlocked(email);
+  static Future<void> block(String email) => _default.block(email);
+  static Future<void> unblock(String email) => _default.unblock(email);
+  static List<Contact> search(String query) => _default.search(query);
+  static Contact? byEmail(String email) => _default.byEmail(email);
+  static Future<void> load() => _default.load();
+  static Future<void> flush() => _default.flush();
+  static void observe(List<MessageSummary> messages) => _default.observe(messages);
+  static void recordSent(Iterable<String> addresses, {DateTime? when}) => _default.recordSent(addresses, when: when);
+  static void observeRecipients(FullMessage message) => _default.observeRecipients(message);
+  static Future<void> setSaved(String email, bool saved) => _default.setSaved(email, saved);
+  static Future<Contact> add({required String email, String name = ''}) => _default.add(email: email, name: name);
+  static Future<void> remove(String email) => _default.remove(email);
+  static Future<int> importContacts(Iterable<Contact> incoming) => _default.importContacts(incoming);
+  static Future<void> forgetSeen() => _default.forgetSeen();
 }

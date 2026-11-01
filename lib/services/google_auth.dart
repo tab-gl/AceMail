@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../data/secret_store.dart';
@@ -29,16 +30,10 @@ typedef GoogleCredential = ({String email, String token, String? name});
 /// SASL XOAUTH2 — which is the whole reason this exists: without it, Gmail is a
 /// provider this app cannot offer at all.
 ///
-/// What the app gets out of it, beyond the token:
-///
-/// * **Nothing is stored.** There is no password and no refresh token on the
-///   device. The token lives about an hour, and a new one is fetched when a
-///   connection needs it. An account whose credentials cannot leak because
-///   there are none is the strongest version of the promise the keychain was
-///   making.
-/// * **The consent is Google's screen, not ours.** The app never sees the
-///   password, and the grant can be revoked from the account page.
-///
+/// Tokens are cached per address in the platform keychain for a short
+/// reconnect window. Passwords and refresh tokens are never stored on mobile.
+/// Consent is Google's screen, and the grant can be revoked from the account
+/// page.
 /// The scope is the full-access one because that is what XOAUTH2 needs: Google
 /// offers no narrower grant that lets a client read *and* send mail over IMAP
 /// and SMTP. It is a restricted scope, so the consent screen has to list it and
@@ -137,21 +132,20 @@ abstract final class GoogleAuth {
   static const String _keyTokenAt = 'ace.google.tokenAt';
   static const String _keyName = 'ace.google.name';
 
-  /// The account this session signed in as.
-  ///
-  /// Held so a token refresh never has to ask the plugin for it. The plugin has
-  /// no silent way to hand back an account: `attemptLightweightAuthentication`
-  /// tries quietly first and then *prompts* when nothing can be auto-selected,
-  /// so asking it on the reconnect path can put a sheet on screen while
-  /// somebody is opening a folder. Remembering the account avoids asking.
-  /// Every account that has signed in, by address.
-  ///
-  /// This was one account — whoever signed in last. With two Google accounts
-  /// that meant only one of them could be refreshed quietly: the other fell
-  /// through to a stored token, and a token lives about an hour, so an hour
-  /// after signing in the second account was asked to sign in again. The
-  /// *stored* token was already per address; the account that can mint a new
-  /// one was not.
+  static String _tokenKey(String email, {bool issuedAt = false}) =>
+      '${issuedAt ? _keyTokenAt : _keyToken}.${email.trim().toLowerCase()}';
+
+  /// Clears process state between isolated tests. Production sign-out uses
+  /// [forget], which also clears persisted credentials.
+  @visibleForTesting
+  static void resetForTesting() {
+    _remembered.clear();
+    _prepareFuture = null;
+    storage = const KeychainSecretStore();
+  }
+
+  /// Accounts restored by the plugin, keyed by normalized email so one
+  /// account can refresh without prompting or replacing another account.
   static final Map<String, GoogleSignInAccount> _remembered =
       <String, GoogleSignInAccount>{};
 
@@ -276,12 +270,11 @@ abstract final class GoogleAuth {
       // Kept per address, so a restart inside the hour does not have to ask
       // anybody — and so signing into a second account does not throw this one
       // away.
-      final String suffix = '.${account.email.toLowerCase()}';
       // Reported, not assumed. If the keychain will not take the cache the
       // sign-in still stands — the plugin can mint another token — but nothing
       // here claims a cache that is not there.
-      final bool cached = await _write('$_keyToken$suffix', token) &
-          await _write('$_keyTokenAt$suffix', DateTime.now().toIso8601String());
+      final bool cached = await _write(_tokenKey(account.email), token) &
+          await _write(_tokenKey(account.email, issuedAt: true), DateTime.now().toIso8601String());
       if (!cached) {
         debugPrint('Ace Mail: the Google token cache was not saved.');
       }
@@ -300,14 +293,13 @@ abstract final class GoogleAuth {
         'description=${error.description ?? '(none)'}',
       );
       throw GoogleAuthException(describe(error));
+    } on PlatformException catch (error) {
+      debugPrint('Ace Mail: Google sign-in channel failed (${Redact.safe(error)}).');
+      throw const GoogleAuthException('Google sign-in could not reach the platform service. Try again.');
     }
   }
 
   /// A fresh token for the account already signed in.
-  ///
-  /// The token expires in about an hour, so this is called when a connection is
-  /// opened rather than when the account was added — which is also why nothing
-  /// is stored: the token is fetched, used, and dropped.
   ///
   /// Returns null when there is no signed-in account. Throws with
   /// [GoogleAuthException.needsSignIn] when there is one but the grant no
@@ -334,10 +326,10 @@ abstract final class GoogleAuth {
   /// keyed by address — so an address that is missing or blank answers null
   /// rather than guessing at whoever signed in last. That guess was the last
   /// remaining way to hand one account's token to another.
-  static Future<String?> token([String? email]) async {
+  static Future<String?> token(String email) async {
     if (_desktop) return GoogleDesktopAuth.token(email);
-    final String? want = email?.trim().toLowerCase();
-    if (want == null || want.isEmpty) return null;
+    final String want = email.trim().toLowerCase();
+    if (want.isEmpty) return null;
 
     try {
       await _prepare();
@@ -359,9 +351,8 @@ abstract final class GoogleAuth {
 
     // Stored per address. One key held one token, so signing into a second
     // account threw the first one's away — and the first then had to ask again.
-    final String suffix = '.$want';
-    final _Read at = await _read('$_keyTokenAt$suffix');
-    final _Read stored = await _read('$_keyToken$suffix');
+    final _Read at = await _read(_tokenKey(want, issuedAt: true));
+    final _Read stored = await _read(_tokenKey(want));
     if (stored.unavailable || at.unavailable) {
       // The device could not answer. That is a recoverable fault, not a
       // signed-out person: saying "sign in again" here is what turned a
@@ -394,8 +385,8 @@ abstract final class GoogleAuth {
     final String? want = email?.trim().toLowerCase();
     if (want != null && want.isNotEmpty) {
       _remembered.remove(want);
-      await _delete('$_keyToken.$want');
-      await _delete('$_keyTokenAt.$want');
+      await _delete(_tokenKey(want));
+      await _delete(_tokenKey(want, issuedAt: true));
       return;
     }
 
@@ -468,6 +459,9 @@ abstract final class GoogleAuth {
       return granted.accessToken;
     } on GoogleSignInException catch (error) {
       throw GoogleAuthException(describe(error));
+    } on PlatformException catch (error) {
+      debugPrint('Ace Mail: Google authorization channel failed (${Redact.safe(error)}).');
+      throw const GoogleAuthException('Google sign-in could not reach the platform service. Try again.');
     }
   }
 
