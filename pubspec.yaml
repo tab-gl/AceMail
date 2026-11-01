@@ -37,7 +37,7 @@ dependencies:
   # in the manifest and why the permission is asked for at the moment somebody
   # taps Import rather than at launch.
   flutter_contacts: ^2.6.0
-  flutter_secure_storage: ^10.3.4
+  flutter_secure_storage: ^11.2.0
   # Signing in to Google, for the one provider that no longer accepts a
   # password. Gmail still speaks IMAP and SMTP, but only with an OAuth access
   # token, and the app password route was closed in 2022.
