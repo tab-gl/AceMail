@@ -90,7 +90,7 @@ class ChymeReply {
         final String query = value.substring('SEARCH:'.length).trim();
         if (query.isNotEmpty) search = query;
       } else if (upper.startsWith('DELETE:')) {
-        deleteRequested = true;
+        deleteRequested = value.substring('DELETE:'.length).trim().toLowerCase() == 'yes';
       } else if (upper.startsWith('TOOL:')) {
         final String rest = value.substring('TOOL:'.length).trim();
         if (rest.isEmpty) continue;

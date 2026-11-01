@@ -208,6 +208,7 @@ void main() {
       expect(reply.text, 'Answer');
       expect(reply.search, 'invoice');
       expect(reply.deleteRequested, isTrue);
+      expect(ChymeReply.parse('DELETE: no').deleteRequested, isFalse);
       expect(reply.tool?.name, 'message_read');
       expect(reply.tool?.argument, '42');
     });

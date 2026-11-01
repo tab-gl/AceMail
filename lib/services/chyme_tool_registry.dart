@@ -20,6 +20,9 @@ typedef ChymeOpenReply = Future<void> Function({
 
 /// Runtime handlers for the model-facing tool specifications. UI operations
 /// are injected; this service never owns a BuildContext or displays a dialog.
+/// Once a user accepts a proposal, non-destructive work completes even if the
+/// sheet closes. Destructive work that needs a second confirmation rechecks
+/// the sheet before committing, so a dismissed dialog cannot authorize it.
 class ChymeToolRegistry {
   static const int maxResults = 8;
 
@@ -41,7 +44,7 @@ class ChymeToolRegistry {
     if (cleaned == 'open' || cleaned == 'current') return open;
     final String digits = cleaned.replaceAll(RegExp(r'[^0-9]'), '');
     final int? uid = int.tryParse(digits);
-    if (uid == null) return open;
+    if (uid == null) return null;
     if (open?.uid == uid) return open;
     for (final MessageSummary message in controller.visibleMessages) {
       if (message.uid == uid) return message;
