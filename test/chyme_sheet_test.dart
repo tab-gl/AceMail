@@ -12,6 +12,7 @@ import 'package:ace_mail/services/chyme.dart';
 import 'package:ace_mail/services/contacts.dart';
 import 'package:ace_mail/services/device_contacts.dart';
 import 'package:ace_mail/state/mail_controller.dart';
+import 'package:ace_mail/state/chyme_conversation.dart';
 import 'package:ace_mail/state/mail_session.dart';
 import 'package:ace_mail/theme/astryx_theme.dart';
 import 'package:ace_mail/widgets/chyme_pickers.dart';
@@ -232,15 +233,15 @@ void main() {
   group('Chyme can do things, not only read', () {
     test('the prompt names every tool the sheet implements', () {
       for (final String tool in <String>[
-        'search',
-        'read',
-        'star',
-        'unstar',
-        'seen',
-        'archive',
-        'delete',
-        'reply',
-        'contacts',
+        'mail_search',
+        'message_read',
+        'message_star',
+        'message_unstar',
+        'message_mark_read',
+        'message_archive',
+        'message_delete',
+        'message_reply',
+        'contact_search',
         'contact_add',
         'contact_block',
         'contact_delete',
@@ -260,12 +261,12 @@ void main() {
       expect(call?.argument, 'Ann | ann@x.com');
 
       final ChymeToolCall? reply =
-          Chyme.toolFrom('TOOL: reply 12 | Thanks, I will look today.');
-      expect(reply?.name, 'reply');
+          Chyme.toolFrom('TOOL: message_reply 12 | Thanks, I will look today.');
+      expect(reply?.name, 'message_reply');
       expect(reply?.argument, '12 | Thanks, I will look today.');
 
       // A tool with no argument at all still parses, rather than being lost.
-      expect(Chyme.toolFrom('TOOL: read')?.name, 'read');
+      expect(Chyme.toolFrom('TOOL: message_read')?.name, 'message_read');
     });
 
     test('it is told it never sends anything', () {
@@ -323,6 +324,7 @@ void main() {
         providers: [
           ChangeNotifierProvider<Preferences>.value(value: prefs),
           ChangeNotifierProvider<MailController>.value(value: controller),
+          ChangeNotifierProvider<ChymeConversation>(create: (_) => ChymeConversation()),
         ],
         child: MaterialApp(
           theme: buildAstryxTheme(Brightness.light),

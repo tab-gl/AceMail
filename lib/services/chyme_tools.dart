@@ -1,3 +1,34 @@
+abstract final class ChymeToolNames {
+  static const String search = 'mail_search';
+  static const String read = 'message_read';
+  static const String star = 'message_star';
+  static const String unstar = 'message_unstar';
+  static const String seen = 'message_mark_read';
+  static const String archive = 'message_archive';
+  static const String delete = 'message_delete';
+  static const String reply = 'message_reply';
+  static const String contacts = 'contact_search';
+  static const String contactAdd = 'contact_add';
+  static const String contactBlock = 'contact_block';
+  static const String contactDelete = 'contact_delete';
+}
+
+class ChymeToolArgument {
+  const ChymeToolArgument(this.head, this.tail);
+  final String head;
+  final String? tail;
+
+  /// Split only at the first pipe. Reply bodies may themselves contain pipes.
+  static ChymeToolArgument parse(String value) {
+    final int separator = value.indexOf('|');
+    if (separator < 0) return ChymeToolArgument(value.trim(), null);
+    return ChymeToolArgument(
+      value.substring(0, separator).trim(),
+      value.substring(separator + 1).trim(),
+    );
+  }
+}
+
 /// The tools Chyme may ask for, in one table.
 ///
 /// The list used to exist twice: as prose inside the system prompt, and as a
@@ -46,70 +77,70 @@ abstract final class ChymeTools {
   /// should reach for first.
   static const List<ChymeToolSpec> all = <ChymeToolSpec>[
     ChymeToolSpec(
-      'search',
+      ChymeToolNames.search,
       '<words>',
       'look through the mail already loaded',
     ),
     ChymeToolSpec(
-      'read',
+      ChymeToolNames.read,
       '<uid>',
       'the whole body of one message',
     ),
     ChymeToolSpec(
-      'star',
+      ChymeToolNames.star,
       '<uid>',
       'flag it',
       mutates: true,
     ),
     ChymeToolSpec(
-      'unstar',
+      ChymeToolNames.unstar,
       '<uid>',
       'remove the flag',
       mutates: true,
     ),
     ChymeToolSpec(
-      'seen',
+      ChymeToolNames.seen,
       '<uid>',
       'mark it read',
       mutates: true,
     ),
     ChymeToolSpec(
-      'archive',
+      ChymeToolNames.archive,
       '<uid>',
       'move it out of the folder',
       mutates: true,
     ),
     ChymeToolSpec(
-      'delete',
+      ChymeToolNames.delete,
       '<uid>',
       'move it to the trash',
       mutates: true,
     ),
     ChymeToolSpec(
-      'reply',
+      ChymeToolNames.reply,
       '<uid> | <body>',
       'open a reply to it, in the person\'s composer',
       mutates: true,
     ),
     ChymeToolSpec(
-      'contacts',
+      ChymeToolNames.contacts,
       '<words>',
       'look somebody up in their address book',
     ),
     ChymeToolSpec(
-      'contact_add',
+      ChymeToolNames.contactAdd,
       '<Name> | <email>',
       'save them to it',
       mutates: true,
     ),
     ChymeToolSpec(
-      'contact_block',
+      ChymeToolNames.contactBlock,
       '<email>',
       'keep their mail out of the list',
       mutates: true,
     ),
     ChymeToolSpec(
-      'contact_delete',
+      ChymeToolNames.contactDelete,
       '<email>',
       'forget them entirely',
       mutates: true,
@@ -133,6 +164,12 @@ abstract final class ChymeTools {
   /// Every name, for a test that pins the registry to the prompt.
   static List<String> get names =>
       <String>[for (final ChymeToolSpec spec in all) spec.name];
+
+  static List<String> missingHandlers(Iterable<String> handlerNames) {
+    final Set<String> handlers = handlerNames.toSet();
+    return all.map((ChymeToolSpec spec) => spec.name)
+        .where((String name) => !handlers.contains(name)).toList();
+  }
 
   /// The tool list as the prompt shows it.
   static String get promptList =>
