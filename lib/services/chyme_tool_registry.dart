@@ -66,12 +66,11 @@ class ChymeToolRegistry {
       // one, where the answer is further down than the excerpt.
       ChymeToolNames.read: (String argument) async {
         final MessageSummary? summary = find(argument);
+        if (summary == null) return 'No message matches that identifier.';
         final FullMessage? open = controller.openMessage;
-        if (summary == null && open == null) return 'No message is open.';
-        if (summary != null && open != null && summary.uid == open.uid) {
+        if (open != null && summary.uid == open.uid) {
           return describe(open);
         }
-        if (summary == null) return describe(open!);
         // A row that is not open has no body in memory; opening it is what the
         // person would do, and it is what this does — through the controller,
         // so the reader follows.
