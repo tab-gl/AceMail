@@ -5,6 +5,7 @@ import 'package:enough_mail/enough_mail.dart';
 import '../data/limits.dart';
 import '../util/text.dart';
 import '../util/file_names.dart';
+import 'message_security.dart';
 
 class MailAttachment {
   const MailAttachment({
@@ -40,6 +41,7 @@ class FullMessage {
     this.messageId,
     this.references,
     this.rawHeaders = '',
+    this.security = const MessageSecurity(),
   });
 
   final int uid;
@@ -66,6 +68,14 @@ class FullMessage {
   /// the authentication results, the list-unsubscribe address — rather than
   /// what the client chose to show.
   final String rawHeaders;
+
+  /// Who sent this, according to the headers it arrived with.
+  ///
+  /// Read once when the message is built rather than in the reader, because it
+  /// is derived from [rawHeaders] and the reader rebuilds on every scroll tick
+  /// — and because the cached copy carries the same headers, so the parse is
+  /// identical whether the message came from the server or from the disk.
+  final MessageSecurity security;
 
   bool get hasHtml => htmlBody != null && htmlBody!.trim().isNotEmpty;
 
@@ -141,6 +151,10 @@ class FullMessage {
       messageId: record['messageId'] as String?,
       references: record['references'] as String?,
       rawHeaders: record['headers'] as String? ?? '',
+      // Derived, not stored: the headers are already in the record, and a
+      // cached copy that keeps a second, separately-stored verdict could drift
+      // from the headers it claims to describe.
+      security: MessageSecurity.parse(record['headers'] as String? ?? ''),
     );
   }
 
@@ -187,6 +201,11 @@ class FullMessage {
       );
     }
 
+    // Rendered once and parsed once: the security verdict and the headers view
+    // are two readings of the same block, and re-rendering it for the second
+    // would be a second chance for them to disagree.
+    final String headers = _renderHeaders(message);
+
     return FullMessage(
       uid: message.uid ?? 0,
       subject: message.decodeSubject() ?? '(no subject)',
@@ -203,7 +222,8 @@ class FullMessage {
       skippedAttachments: skipped,
       messageId: message.getHeaderValue('message-id'),
       references: message.getHeaderValue('references'),
-      rawHeaders: _renderHeaders(message),
+      rawHeaders: headers,
+      security: MessageSecurity.parse(headers),
     );
   }
 

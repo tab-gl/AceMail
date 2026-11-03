@@ -399,6 +399,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onChanged: prefs.setShowFolderCounts,
                 ),
                 SettingsSwitchRow(
+                  icon: AceIcons.package,
+                  title: 'Highlights',
+                  subtitle: 'Cards above the inbox for codes, deliveries, bills '
+                      'and security notices. Each one opens the message it '
+                      'came from.',
+                  value: prefs.highlights,
+                  onChanged: prefs.setHighlights,
+                ),
+                SettingsSwitchRow(
                   icon: AceIcons.brightness,
                   title: 'True black (OLED)',
                   subtitle: 'The dark theme goes to #000000. A pixel that is off '

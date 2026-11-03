@@ -117,7 +117,21 @@ abstract final class AceIcons {
   static const AceIcon globe = HugeIcons.strokeRoundedGlobe;
   static const AceIcon cloud = HugeIcons.strokeRoundedCloud;
   static const AceIcon shield = HugeIcons.strokeRoundedShield01;
+  /// A shield with a tick: a sender the receiving server could vouch for. The
+  /// tick is what separates it from [shield] at a glance, which matters on a
+  /// chip that is otherwise the same size and shape.
+  static const AceIcon shieldCheck = HugeIcons.strokeRoundedShieldCheck;
   static const AceIcon lock = HugeIcons.strokeRoundedLock;
+
+  // --- highlights --------------------------------------------------------
+  /// Something on its way, for a delivery highlight.
+  static const AceIcon package = HugeIcons.strokeRoundedPackage;
+  /// A bill or an invoice.
+  static const AceIcon receipt = HugeIcons.strokeRoundedInvoice01;
+  /// A flight, for a travel highlight.
+  static const AceIcon flight = HugeIcons.strokeRoundedAirplane01;
+  /// An invitation or an appointment.
+  static const AceIcon calendar = HugeIcons.strokeRoundedCalendar01;
   static const AceIcon fingerprint = HugeIcons.strokeRoundedFingerprintScan;
   /// The search bar's microphone.
   static const AceIcon mic = HugeIcons.strokeRoundedMic01;

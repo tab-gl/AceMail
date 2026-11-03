@@ -3,6 +3,29 @@
 Notable changes, newest first. Versions follow `pubspec.yaml`; the build number
 after the `+` is the Android version code.
 
+## 0.6.2+106
+
+### Added
+- **Highlights, above the inbox.** Codes, deliveries, bills, travel and
+  security notices, as a row of cards you can tap straight into. Each card is
+  one unread message from the last week and says only what that message says —
+  the subject and the sender — so a wrong guess costs a tap rather than a wrong
+  belief. Inbox and All inboxes only; Settings → Appearance turns it off.
+- **The sender's authentication, where Gmail puts it.** A pill under the name in
+  the reader: *signed by*, *mailed by*, and the SPF, DKIM and DMARC verdicts the
+  receiving server recorded, with the header's own words beside each one. It
+  reports what your provider said and verifies nothing itself, and it says so.
+  A failed method takes the warning colour; a `softfail` does not, because that
+  is what every forwarded message looks like.
+
+### Changed
+- **Unread mail has a dot again.** The accent ink on the sender said it too, but
+  a dot survives a name long enough to ellipsis, and it is what the eye catches
+  while scrolling.
+- **A paperclip on any message with an attachment.** The flag was already on the
+  summary and was never drawn, so the only way to know a message carried a file
+  was to open it.
+
 ## 0.6.2+105
 
 ### Changed

@@ -24,6 +24,7 @@ import '../util/text.dart';
 import 'astryx_widgets.dart';
 import 'folder_picker.dart';
 import 'message_html.dart';
+import 'security_chip.dart';
 import 'avatar.dart';
 import 'skeleton.dart';
 import 'settings_group.dart';
@@ -458,6 +459,26 @@ class _MessageReaderState extends State<MessageReader> {
                 formatFullDate(message.date),
                 style: AstryxText.supporting(c.textSecondary),
               ),
+              // The sender's authentication, where Gmail puts it: beside the
+              // person, before the message. A line of its own rather than a
+              // badge on the avatar, because the one case that matters — a
+              // method failed — has to be readable as a sentence, and a glyph
+              // on a picture is not.
+              //
+              // Only when the server said something. Plenty of small IMAP
+              // hosts write no `Authentication-Results` at all, and a grey
+              // "no details" pill on every message from them would be a line of
+              // furniture that never has anything to say.
+              if (message.security.reported) ...<Widget>[
+                const SizedBox(height: AstryxSpace.s1_5),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: SecurityChip(
+                    security: message.security,
+                    sender: email,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
