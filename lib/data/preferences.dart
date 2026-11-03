@@ -133,6 +133,7 @@ class Preferences extends ChangeNotifier {
   static const String _keySignatureOnReplies = 'ace.signatureOnReplies';
   static const String _keyConfirmArchive = 'ace.confirmArchive';
   static const String _keyUndoWindow = 'ace.undoWindow';
+  static const String _keyHighlights = 'ace.highlights';
   static const String _keyBccSelf = 'ace.bccSelf';
   static const String _keyCacheMessages = 'ace.cacheMessages';
   static const String _keyAppLock = 'ace.appLock';
@@ -247,6 +248,7 @@ class Preferences extends ChangeNotifier {
   bool _reduceMotion = false;
   bool _groupByDate = true;
   bool _showFolderCounts = true;
+  bool _highlights = true;
   String? _lastSeenVersion;
   bool _quoteReplies = true;
   bool _signatureOnReplies = true;
@@ -451,6 +453,12 @@ class Preferences extends ChangeNotifier {
 
   /// Whether each folder shows how much unread mail is in it.
   bool get showFolderCounts => _showFolderCounts;
+
+  /// Whether the inbox opens with the highlights rail above the list.
+  ///
+  /// On by default, and off is one switch away: a rail that guesses what a
+  /// message is about is worth having only while the guesses are welcome.
+  bool get highlights => _highlights;
 
   /// The version whose release notes have already been shown. Null means the
   /// app has not been through an update yet.
@@ -816,6 +824,7 @@ class Preferences extends ChangeNotifier {
     _groupByDate = _decodeBool(raw[_keyGroupByDate], _groupByDate);
     _showFolderCounts =
         _decodeBool(raw[_keyFolderCounts], _showFolderCounts);
+    _highlights = _decodeBool(raw[_keyHighlights], _highlights);
     _quoteReplies = _decodeBool(raw[_keyQuoteReplies], _quoteReplies);
     _signatureOnReplies =
         _decodeBool(raw[_keySignatureOnReplies], _signatureOnReplies);
@@ -942,6 +951,9 @@ class Preferences extends ChangeNotifier {
 
   Future<void> setShowFolderCounts(bool value) =>
       _write(_keyFolderCounts, '$value', () => _showFolderCounts = value);
+
+  Future<void> setHighlights(bool value) =>
+      _write(_keyHighlights, '$value', () => _highlights = value);
 
   Future<void> setReduceMotion(bool value) =>
       _write(_keyReduceMotion, '$value', () => _reduceMotion = value);

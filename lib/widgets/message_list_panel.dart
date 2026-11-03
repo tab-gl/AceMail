@@ -9,7 +9,9 @@ import 'package:hugeicons/hugeicons.dart';
 import 'package:provider/provider.dart';
 
 import '../data/preferences.dart';
+import '../models/mail_folder.dart';
 import '../models/message_group.dart';
+import '../services/mail_highlights.dart';
 import '../util/ace_snack.dart';
 import '../models/message_sort.dart';
 import '../models/message_summary.dart';
@@ -26,6 +28,7 @@ import 'ace_glass.dart';
 import 'astryx_widgets.dart';
 import 'avatar.dart';
 import 'confirm_exit.dart';
+import 'highlights_rail.dart';
 import 'message_actions.dart';
 import 'settings_group.dart';
 import 'skeleton.dart';
@@ -43,6 +46,7 @@ class MessageListPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final AstryxColors c = context.astryx;
     final MailController controller = context.watch<MailController>();
+    final Preferences prefs = context.watch<Preferences>();
 
     return Container(
       color: c.backgroundBody,
@@ -83,11 +87,35 @@ class MessageListPanel extends StatelessWidget {
           // the folder's name, which the app bar gave up to the search bar.
           if (controller.searchQuery == null)
             SliverToBoxAdapter(child: _Greeting(controller: controller)),
+          // The highlights, between where you are and the mail itself. Only in
+          // an inbox, and only when nothing is being searched or picked: this
+          // is a shortcut to unread mail from the last week, and in a folder of
+          // sent mail or a set of search results it would be a rail of cards
+          // about messages the person is not looking for.
+          if (prefs.highlights &&
+              controller.searchQuery == null &&
+              !controller.selecting &&
+              _isInbox(controller))
+            SliverToBoxAdapter(
+              child: HighlightsRail(
+                highlights: HighlightScanner.scan(controller.visibleMessages),
+              ),
+            ),
           ..._slivers(context, controller),
         ],
         ),
       ),
     );
+  }
+
+  /// Whether the list is showing an inbox — one account's, or all of them.
+  ///
+  /// The highlights belong to an inbox the way a doormat belongs to a door: the
+  /// two folders where mail arrives. Sent, drafts and the trash get none,
+  /// because nothing in them is waiting to be dealt with.
+  bool _isInbox(MailController controller) {
+    final FolderRole? role = controller.selectedFolder?.role;
+    return role == FolderRole.inbox || role == FolderRole.unified;
   }
 
   /// The pull is a drag, so the indicator is driven by it: the shape morphs as
@@ -781,6 +809,25 @@ class MessageTile extends StatelessWidget {
                                 // the subject keeps the whole width it needs.
                                 Row(
                                   children: <Widget>[
+                                    // Unread, as a dot. The accent ink on the
+                                    // name says it too, but a dot is what the
+                                    // eye catches while scrolling — and it
+                                    // survives the name being long enough to
+                                    // ellipsis, which the tint does not.
+                                    if (unread)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          right: AstryxSpace.s1_5,
+                                        ),
+                                        child: Container(
+                                          width: 6,
+                                          height: 6,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: c.accent,
+                                          ),
+                                        ),
+                                      ),
                                     // The sender is the *context*, not the
                                     // point. It was the bold line, which made a
                                     // list of names to be read before you could
@@ -800,6 +847,18 @@ class MessageTile extends StatelessWidget {
                                         ),
                                       ),
                                     ),
+                                    // Something is attached. The flag is
+                                    // already on the summary and was never
+                                    // shown, which meant the only way to know a
+                                    // message carried a file was to open it.
+                                    if (summary.hasAttachments) ...<Widget>[
+                                      const SizedBox(width: AstryxSpace.s1_5),
+                                      AceIconView(
+                                        icon: AceIcons.attachment,
+                                        size: 14,
+                                        color: c.iconSecondary,
+                                      ),
+                                    ],
                                     if (summary.isFlagged) ...<Widget>[
                                       const SizedBox(width: AstryxSpace.s1_5),
                                       // A one-shot pop as the row is built with
