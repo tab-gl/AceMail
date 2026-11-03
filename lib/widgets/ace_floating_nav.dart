@@ -53,33 +53,27 @@ class AceFloatingNav<T> extends StatelessWidget {
     required this.items,
     required this.value,
     required this.onChanged,
+    this.floating = true,
   });
 
   final List<AceNavItem<T>> items;
   final T value;
   final ValueChanged<T> onChanged;
 
+  /// Whether the bar places itself — its own safe area, its own edge.
+  ///
+  /// True where it is the only thing at the bottom of the screen. False where
+  /// something else shares that row: a bar that brings its own safe-area
+  /// padding into a `Row` sits higher than whatever is beside it, because the
+  /// padding is inside its box and the `Row` centres the boxes. The owner of
+  /// the row applies the safe area once, for everything in it.
+  final bool floating;
+
   @override
   Widget build(BuildContext context) {
     final AstryxColors c = context.astryx;
 
-    return SafeArea(
-      minimum: const EdgeInsets.fromLTRB(
-        AstryxSpace.s4,
-        0,
-        AstryxSpace.s4,
-        AstryxSpace.s4,
-      ),
-      // Left-aligned and sized to its own content: the bar hugs the leading
-      // edge and never stretches to fill the height it is given.
-      child: Align(
-        alignment: Alignment.centerLeft,
-        widthFactor: 1,
-        heightFactor: 1,
-        // The height is stated, not inherited from the constraints. See
-        // [_barHeight]: the loose constraints a `Positioned` provides are what
-        // let this grow to fill the screen.
-        child: SizedBox(
+    final Widget bar = SizedBox(
           height: _barHeight,
           child: Container(
           decoration: BoxDecoration(
@@ -127,7 +121,27 @@ class AceFloatingNav<T> extends StatelessWidget {
             ),
           ),
           ),
-        ),
+        );
+
+    if (!floating) return bar;
+
+    return SafeArea(
+      minimum: const EdgeInsets.fromLTRB(
+        AstryxSpace.s4,
+        0,
+        AstryxSpace.s4,
+        AstryxSpace.s4,
+      ),
+      // Left-aligned and sized to its own content: the bar hugs the leading
+      // edge and never stretches to fill the height it is given.
+      child: Align(
+        alignment: Alignment.centerLeft,
+        widthFactor: 1,
+        heightFactor: 1,
+        // The height is stated, not inherited from the constraints. See
+        // [_barHeight]: the loose constraints a `Positioned` provides are what
+        // let this grow to fill the screen.
+        child: bar,
       ),
     );
   }

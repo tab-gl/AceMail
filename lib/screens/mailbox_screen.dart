@@ -536,27 +536,12 @@ class _MailboxScreenState extends State<MailboxScreen>
         // It does not collapse as the list scrolls. A button that changes shape
         // as the list moves is a button reacting to something you are not
         // looking at.
-        floatingActionButton: wide || reading
-            ? null
-            : SizedBox(
-                width: MediaQuery.sizeOf(context).width - (AstryxSpace.s5 * 2),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: <Widget>[
-                    AceAskChyme(onAsk: () => ChymeSheet.show(context)),
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: AceFab(
-                        label: 'Compose',
-                        icon: AceIcons.edit,
-                        onPressed: () => _compose(context),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+        // No Scaffold FAB. The bottom of a phone screen carries three things —
+        // the folder tabs, Ask Chyme and Compose — and they are laid out
+        // together by [_BottomBar] in the body's stack. As a Scaffold FAB,
+        // Compose was positioned by the Scaffold and the other two were not,
+        // so nothing knew where anything else was and on a narrow screen all
+        // three landed on the same strip of pixels.
         // Behind the bar, so the glass has the list to blur rather than a flat
         // colour.
         extendBodyBehindAppBar: !(reading && !wide),
@@ -618,10 +603,11 @@ class _MailboxScreenState extends State<MailboxScreen>
                   if (!reading)
                     Positioned(
                       left: 0,
+                      right: 0,
                       bottom: 0,
-                      child: AceFloatingNav<bool>(
-                        value: controller.contactsTab,
-                        onChanged: (bool contacts) {
+                      child: _BottomBar(
+                        contacts: controller.contactsTab,
+                        onContactsChanged: (bool contacts) {
                           setState(() => _contactQuery = '');
                           controller.showContacts(contacts);
                           // The bar's search is one search bar; leaving the tab
@@ -629,18 +615,8 @@ class _MailboxScreenState extends State<MailboxScreen>
                           _search.clear();
                           _exitSearch();
                         },
-                        items: const <AceNavItem<bool>>[
-                          AceNavItem<bool>(
-                            value: false,
-                            icon: AceIcons.inbox,
-                            label: 'Mail',
-                          ),
-                          AceNavItem<bool>(
-                            value: true,
-                            icon: AceIcons.contacts,
-                            label: 'Contacts',
-                          ),
-                        ],
+                        onAsk: () => ChymeSheet.show(context),
+                        onCompose: () => _compose(context),
                       ),
                     ),
                 ],
@@ -957,6 +933,96 @@ class _MicButtonState extends State<_MicButton>
         // stop. Saying so is better than a button that looks broken.
         tooltip: widget.listening ? 'Listening…' : 'Search by voice',
         onPressed: widget.onPressed,
+      ),
+    );
+  }
+}
+
+/// The bottom of the phone layout: the folder tabs, the assistant and Compose.
+///
+/// One widget because they share one strip of the screen, and they did not use
+/// to. The tabs were positioned from the left, the assistant from the centre,
+/// Compose from the right by the Scaffold — three things that did not know
+/// where the others were. A phone has no width for three pills in a row, so
+/// they drew on top of each other: Ask Chyme half behind Compose, and both of
+/// them over the folder tabs.
+///
+/// The assistant sits *above* Compose rather than beside it. A secondary action
+/// stacked over the primary one, both on the trailing edge, is the shape
+/// Material already uses for this, and it is the only arrangement that leaves
+/// the folder tabs their own width.
+class _BottomBar extends StatelessWidget {
+  const _BottomBar({
+    required this.contacts,
+    required this.onContactsChanged,
+    required this.onAsk,
+    required this.onCompose,
+  });
+
+  final bool contacts;
+  final ValueChanged<bool> onContactsChanged;
+  final VoidCallback onAsk;
+  final VoidCallback onCompose;
+
+  /// Below this the Compose button gives up its label and becomes a circle.
+  ///
+  /// The three controls are sized by their own content, and on a 320dp phone
+  /// the tabs and an extended Compose together are wider than the screen. A
+  /// circle is still the same button, and the icon is the part that was doing
+  /// the work anyway.
+  static const double _roomForALabel = 360;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool roomy = MediaQuery.sizeOf(context).width >= _roomForALabel;
+
+    return SafeArea(
+      minimum: const EdgeInsets.fromLTRB(
+        AstryxSpace.s4,
+        0,
+        AstryxSpace.s4,
+        AstryxSpace.s4,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Align(
+            alignment: Alignment.centerRight,
+            child: AceAskChyme(onAsk: onAsk),
+          ),
+          const SizedBox(height: AstryxSpace.s3),
+          Row(
+            children: <Widget>[
+              AceFloatingNav<bool>(
+                // The safe area is this column's, applied once around all of
+                // it: the nav brings its own only when it is alone down here.
+                floating: false,
+                value: contacts,
+                onChanged: onContactsChanged,
+                items: const <AceNavItem<bool>>[
+                  AceNavItem<bool>(
+                    value: false,
+                    icon: AceIcons.inbox,
+                    label: 'Mail',
+                  ),
+                  AceNavItem<bool>(
+                    value: true,
+                    icon: AceIcons.contacts,
+                    label: 'Contacts',
+                  ),
+                ],
+              ),
+              const Spacer(),
+              AceFab(
+                label: 'Compose',
+                icon: AceIcons.edit,
+                extended: roomy,
+                onPressed: onCompose,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -86,7 +86,23 @@ class AceHtml extends StatelessWidget {
     // more than the cap saves.
     final String source = truncateSafely(html, MailLimits.maxHtmlBytes);
 
-    return HtmlWidget(
+    return SizedBox(
+      // A definite width, and the whole of the width that is going.
+      //
+      // This is the line that fixes a body rendering as a column of single
+      // letters. The renderer lays out at whatever width it is handed, and it
+      // was handed a *loose* box — a `Column` with `CrossAxisAlignment.start`
+      // gives its children `minWidth: 0` — so `HtmlWidget` sized itself to its
+      // own minimum intrinsic width. Mail written in layout tables, which is
+      // most mail, then had `width: 100%` resolve against that minimum: on a
+      // Gmail receipt it came out about one character wide, and the body drew
+      // as `Y`, `o`, `u` down the middle of the screen.
+      //
+      // `double.infinity` is not a size here, it is "as much as you are given":
+      // inside a bounded box it resolves to the maximum, which is the width the
+      // card actually has.
+      width: double.infinity,
+      child: HtmlWidget(
       source,
       textStyle: baseStyle,
       // Deliberately *not* set. The renderer's own rule is the right one: parse
@@ -104,6 +120,7 @@ class AceHtml extends StatelessWidget {
       customStylesBuilder: _styles,
       customWidgetBuilder: (dom.Element element) => _blockedImage(element, c),
       onTapUrl: _tapUrl,
+      ),
     );
   }
 
