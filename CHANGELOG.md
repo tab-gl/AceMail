@@ -3,6 +3,31 @@
 Notable changes, newest first. Versions follow `pubspec.yaml`; the build number
 after the `+` is the Android version code.
 
+## 0.6.2+107
+
+### Fixed
+- **A mail body renders at the width of the screen again.** The HTML renderer
+  was handed a loose box — a column with `CrossAxisAlignment.start` gives its
+  children `minWidth: 0` — so it sized itself to its own minimum intrinsic
+  width, and `width: 100%` in the sender's layout tables then resolved against
+  that minimum. On a Gmail receipt it came out about one character wide and the
+  body drew as `Y`, `o`, `u` down the middle of the screen. The body now takes
+  the width it is given, and there is a test that lays one out in the box the
+  reader actually uses.
+- **Ask Chyme, Compose and the folder tabs are no longer on top of each other.**
+  They were three things positioned by three different owners — the tabs from
+  the left, the assistant from the centre, Compose from the right by the
+  Scaffold — and a phone has no width for three pills in a row, so they drew
+  over one another. One bar lays out all three now, with the assistant above
+  Compose on the trailing edge, and the list keeps clearance for it.
+
+### Changed
+- **One artifact per APK.** Both APKs used to arrive in a single artifact, which
+  GitHub hands over as a zip to be unpacked and chosen from. Each ABI is its own
+  artifact now — `AceMail-0.6.2-arm64-v8a.zip` holds the one file that installs
+  on that phone — and the iOS build is named the same way. On a release each one
+  is a separate asset.
+
 ## 0.6.2+106
 
 ### Added

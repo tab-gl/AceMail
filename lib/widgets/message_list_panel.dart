@@ -361,9 +361,28 @@ class MessageListPanel extends StatelessWidget {
             ),
           ),
         ),
-      const SliverToBoxAdapter(child: SizedBox(height: AstryxSpace.s10)),
+      // Clearance for the floating bar at the bottom of a phone screen: the
+      // folder tabs, Ask Chyme and Compose sit over the list, and without this
+      // the last message scrolls up underneath them and cannot be reached.
+      SliverToBoxAdapter(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).width < _phoneBreakpoint
+              ? _phoneBarClearance
+              : AstryxSpace.s10,
+        ),
+      ),
     ];
   }
+
+  /// The width at which the mailbox becomes two panes, where the bottom bar is
+  /// not drawn at all. The same number `MailboxScreen` breaks at.
+  static const double _phoneBreakpoint = 940;
+
+  /// How much room the phone's bottom bar takes out of the list.
+  ///
+  /// The assistant, the gap, the tabs and the safe area: enough that the last
+  /// row can be scrolled clear of them rather than ending under them.
+  static const double _phoneBarClearance = 176;
 
   String _emptyMessage(MailController controller) {
     if (controller.searchQuery != null) {

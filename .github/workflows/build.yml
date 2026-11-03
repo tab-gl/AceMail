@@ -168,33 +168,62 @@ jobs:
             fi
           done
 
+      # Read once, so the artifact names and the release assets cannot
+      # disagree about which version they are.
+      - name: Read the version
+        id: version
+        run: |
+          echo "value=$(sed -n 's/^version: *//p' pubspec.yaml | head -1 | cut -d+ -f1)" >> "$GITHUB_OUTPUT"
+
       # Renamed on the way out: `app-arm64-v8a-release.apk` is Flutter's name
       # for a build step, and `AceMail-0.5.2-arm64-v8a.apk` is a name somebody
       # can choose between in a list of downloads.
       - name: Name the APKs
         if: github.event_name != 'pull_request'
         run: |
-          VERSION=$(sed -n 's/^version: *//p' pubspec.yaml | head -1 | cut -d+ -f1)
           cd build/app/outputs/flutter-apk
           for ABI in armeabi-v7a arm64-v8a; do
-            mv "app-$ABI-release.apk" "AceMail-$VERSION-$ABI.apk"
+            mv "app-$ABI-release.apk" "AceMail-${{ steps.version.outputs.value }}-$ABI.apk"
           done
           ls -l
 
-      - name: Upload the APKs
+      # One artifact per APK, not one artifact holding both.
+      #
+      # GitHub always hands an artifact over as a zip, so an artifact with two
+      # APKs in it is a zip somebody has to unpack and then choose from — which
+      # is the thing a split build exists to avoid. One APK per artifact means
+      # `AceMail-0.6.2-arm64-v8a.zip` unzips to the one file that installs on
+      # the phone, and the name on the download says which phone.
+      - name: Upload the arm64 APK
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: ace-mail-apks
-          path: build/app/outputs/flutter-apk/AceMail-*.apk
+          name: AceMail-${{ steps.version.outputs.value }}-android-arm64-v8a
+          path: build/app/outputs/flutter-apk/AceMail-${{ steps.version.outputs.value }}-arm64-v8a.apk
           if-no-files-found: error
 
-      - name: Upload the debug APKs
+      - name: Upload the 32-bit arm APK
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: AceMail-${{ steps.version.outputs.value }}-android-armeabi-v7a
+          path: build/app/outputs/flutter-apk/AceMail-${{ steps.version.outputs.value }}-armeabi-v7a.apk
+          if-no-files-found: error
+
+      - name: Upload the debug arm64 APK
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: ace-mail-debug-apks
-          path: build/app/outputs/flutter-apk/app-*-debug.apk
+          name: ace-mail-debug-arm64-v8a
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
+          if-no-files-found: error
+
+      - name: Upload the debug 32-bit arm APK
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ace-mail-debug-armeabi-v7a
+          path: build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk
           if-no-files-found: error
 
   # The other two platforms. Separate jobs because each needs a different
@@ -359,10 +388,17 @@ jobs:
           zip -qry "$GITHUB_WORKSPACE/AceMail-$VERSION-ios-unsigned.ipa" Payload
           ls -l "$GITHUB_WORKSPACE"/AceMail-*.ipa
 
+      # Its own artifact, named for what it is: an unsigned .ipa that Xcode
+      # re-signs. Nothing else travels with it.
+      - name: Read the version
+        id: version
+        run: |
+          echo "value=$(sed -n 's/^version: *//p' pubspec.yaml | head -1 | cut -d+ -f1)" >> "$GITHUB_OUTPUT"
+
       - name: Upload
         uses: actions/upload-artifact@v7
         with:
-          name: ace-mail-ios
+          name: AceMail-${{ steps.version.outputs.value }}-ios-unsigned
           path: AceMail-*-ios-unsigned.ipa
           if-no-files-found: error
 
@@ -521,11 +557,16 @@ jobs:
       # repo, not just the artifacts.
       - uses: actions/checkout@v7
 
+      # Both APK artifacts, found by pattern rather than by name: the artifact
+      # names carry the version, and a release should not have to be told it to
+      # find its own files. They land side by side in `apk/`, and go up as two
+      # separate release assets — one file per download, not a bundle.
       - name: Download the APKs
         uses: actions/download-artifact@v8
         with:
-          name: ace-mail-apks
+          pattern: AceMail-*-android-*
           path: apk
+          merge-multiple: true
 
       # Optional: a platform that failed to build is skipped rather than failing
       # the release. The notes are already written by this point.
@@ -554,8 +595,9 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
-          name: ace-mail-ios
+          pattern: AceMail-*-ios-unsigned
           path: ios
+          merge-multiple: true
 
       # The body is generated from CHANGELOG.md at release time, so it cannot
       # drift from the changelog the app itself shows. The self-test runs first:
