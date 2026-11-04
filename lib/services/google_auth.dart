@@ -137,14 +137,13 @@ abstract final class GoogleAuth {
   static const String _keyTokenAt = 'ace.google.tokenAt';
   static const String _keyName = 'ace.google.name';
 
-  /// The account this session signed in as.
+  /// Every account that has signed in, by address.
   ///
   /// Held so a token refresh never has to ask the plugin for it. The plugin has
   /// no silent way to hand back an account: `attemptLightweightAuthentication`
   /// tries quietly first and then *prompts* when nothing can be auto-selected,
   /// so asking it on the reconnect path can put a sheet on screen while
   /// somebody is opening a folder. Remembering the account avoids asking.
-  /// Every account that has signed in, by address.
   ///
   /// This was one account — whoever signed in last. With two Google accounts
   /// that meant only one of them could be refreshed quietly: the other fell
@@ -303,16 +302,6 @@ abstract final class GoogleAuth {
     }
   }
 
-  /// A fresh token for the account already signed in.
-  ///
-  /// The token expires in about an hour, so this is called when a connection is
-  /// opened rather than when the account was added — which is also why nothing
-  /// is stored: the token is fetched, used, and dropped.
-  ///
-  /// Returns null when there is no signed-in account. Throws with
-  /// [GoogleAuthException.needsSignIn] when there is one but the grant no
-  /// longer covers the scope, so the screen can offer the sign-in again rather
-  /// than an error nobody can act on.
   /// A token for the account already signed in, **without asking anybody**.
   ///
   /// This is the reconnect path — opening a folder, fetching a page — and it
@@ -330,14 +319,13 @@ abstract final class GoogleAuth {
   /// caller says so. That is a worse sentence than a sheet, and a much better
   /// one than a sheet nobody asked for.
   ///
-  /// [email] is required in practice — every caller has one, and the cache is
-  /// keyed by address — so an address that is missing or blank answers null
-  /// rather than guessing at whoever signed in last. That guess was the last
-  /// remaining way to hand one account's token to another.
-  static Future<String?> token([String? email]) async {
+  /// The cache is keyed by address, so [email] is required: a blank one answers
+  /// null rather than guessing at whoever signed in last. That guess was the
+  /// last remaining way to hand one account's token to another.
+  static Future<String?> token(String email) async {
     if (_desktop) return GoogleDesktopAuth.token(email);
-    final String? want = email?.trim().toLowerCase();
-    if (want == null || want.isEmpty) return null;
+    final String want = email.trim().toLowerCase();
+    if (want.isEmpty) return null;
 
     try {
       await _prepare();
