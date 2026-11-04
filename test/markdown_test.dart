@@ -1,4 +1,4 @@
-import 'package:ace_mail/widgets/markdown_view.dart';
+import 'package:ace_mail/util/markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// The block rules. What Chyme writes is a chat reply, so this is not a
