@@ -1007,14 +1007,19 @@ class _StepChip extends StatelessWidget {
             ? c.onAccent
             : c.textSecondary;
 
+    // A 24px circle with a number in it is 24px of circle and no room for the
+    // number at any text size but the default. Both follow the type, and the
+    // name beside it gives way rather than pushing the trail off the edge.
+    final double dot = scaledForText(context, 24, growth: 0.75);
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         AnimatedContainer(
           duration: AstryxMotion.medium,
           curve: AstryxMotion.emphasized,
-          width: 24,
-          height: 24,
+          width: dot,
+          height: dot,
           alignment: Alignment.center,
           decoration: BoxDecoration(color: fill, shape: BoxShape.circle),
           child: done
@@ -1022,11 +1027,15 @@ class _StepChip extends StatelessWidget {
               : Text('$number', style: AstryxText.label(ink)),
         ),
         const SizedBox(width: AstryxSpace.s2),
-        Text(
-          label,
-          style: active
-              ? AstryxText.bodyStrong(c.textPrimary)
-              : AstryxText.body(c.textSecondary),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: active
+                ? AstryxText.bodyStrong(c.textPrimary)
+                : AstryxText.body(c.textSecondary),
+          ),
         ),
       ],
     );

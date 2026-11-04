@@ -3,6 +3,30 @@
 Notable changes, newest first. Versions follow `pubspec.yaml`; the build number
 after the `+` is the Android version code.
 
+## 0.6.2+110
+
+### Fixed
+- **Buttons hold their labels at any text size.** `AceButton` and `AceFab` were
+  a fixed height with a word in them — 32, 40 or 56 — and the word follows the
+  device's accessibility setting while the box did not. At 2x the label was
+  taller than the button and painted an overflow stripe across whatever was
+  behind it, on every screen that has a button. They follow the type now.
+- **A long button label ellipsises instead of wrapping.** `overflow: ellipsis`
+  was already set and did nothing, because a `Text` with no line limit wraps
+  first; a long label became two lines in a one-line box.
+- **An attachment's filename stays on one line.** It wrapped, so a scanned
+  invoice's forty-character name made a pill three lines tall in the middle of
+  the message.
+- **The sign-in step number has room for itself.** A 24px circle held a number
+  that grows, and the step's name had no way to give way; both are sized from
+  the type now.
+
+### Changed
+- **One rule for "a height that grows with the text".** It had been written four
+  times — the folder bar, the assistant's pill, the highlight cards and now the
+  buttons — and the version that had not been updated was the one that broke.
+  It is `scaledForText` in the tokens file, used by all of them.
+
 ## 0.6.2+109
 
 ### Added

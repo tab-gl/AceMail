@@ -552,8 +552,14 @@ class _MessageReaderState extends State<MessageReader> {
                     color: c.textAccent,
                   ),
                   const SizedBox(width: AstryxSpace.s1_5),
+                  // One line, ellipsised. A filename has no length limit — a
+                  // scanned invoice arrives as forty characters of date and
+                  // reference — and a pill that wraps it is a pill three lines
+                  // tall sitting in the middle of a message.
                   Text(
                     attachment.fileName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: AstryxText.label(c.textAccent),
                   ),
                   const SizedBox(width: AstryxSpace.s2),
