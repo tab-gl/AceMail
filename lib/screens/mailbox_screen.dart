@@ -15,7 +15,6 @@ import '../theme/astryx_tokens.dart';
 import '../util/ace_snack.dart';
 import '../util/haptics.dart';
 import '../widgets/astryx_widgets.dart';
-import '../widgets/chyme_mark.dart';
 import '../widgets/chyme_sheet.dart';
 import '../widgets/ace_floating_nav.dart';
 import '../widgets/confirm_exit.dart';
@@ -24,6 +23,7 @@ import '../widgets/folder_picker.dart';
 import '../widgets/folder_rail.dart';
 import '../widgets/message_list_panel.dart';
 import '../widgets/message_reader.dart';
+import '../widgets/voice_button.dart';
 import 'compose_screen.dart';
 import '../widgets/ace_glass.dart';
 import '../widgets/ace_icon_view.dart';
@@ -636,10 +636,9 @@ class _MailboxScreenState extends State<MailboxScreen>
   /// the device — see [VoiceInput].
   Widget _searchBar(AstryxColors c) {
     final bool hasText = _search.text.isNotEmpty;
-    final Preferences prefs = context.watch<Preferences>();
     // Live means somebody is looking at it: focused, or with something typed.
-    // A microphone offered to somebody who is reading the list is a button
-    // that competes with the one thing the bar is for.
+    // It sets the bar's height, and nothing else now that the assistant's mark
+    // has gone from this row.
     final bool live = _searchFocus.hasFocus || hasText;
 
     return AnimatedContainer(
@@ -717,36 +716,16 @@ class _MailboxScreenState extends State<MailboxScreen>
                   )
                 : const SizedBox.shrink(),
           ),
-          // One slot, two occupants, and which one is in it is the whole
-          // point: the microphone belongs to searching, and the assistant
-          // belongs to everything else. Neither is ever a wasted tap, because
-          // neither is there when it is not the thing you are doing.
-          AnimatedSwitcher(
-            duration: AstryxMotion.of(const Duration(milliseconds: 240)),
-            switchInCurve: AstryxMotion.emphasized,
-            switchOutCurve: AstryxMotion.emphasized,
-            transitionBuilder: (Widget child, Animation<double> animation) =>
-                FadeTransition(
-              opacity: animation,
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.7, end: 1).animate(animation),
-                child: child,
-              ),
-            ),
-            child: live || !prefs.chymeEnabled
-                ? _MicButton(
-                    key: const ValueKey<String>('mic'),
-                    listening: _listening,
-                    onPressed: _listenForSearch,
-                  )
-                : AceIconButton(
-                    key: const ValueKey<String>('chyme'),
-                    icon: AceIcons.chyme,
-                    tooltip: 'Chyme',
-                    markBuilder: (Color foreground) =>
-                        ChymeMark(size: 22, color: foreground),
-                    onPressed: () => ChymeSheet.show(context),
-                  ),
+          // The microphone, and only the microphone. The assistant used to
+          // have a second way in here, wearing its own mark, and it was
+          // redundant the moment Ask Chyme took a pill along the bottom edge:
+          // two doors to the same room, one of them inside a search bar.
+          // Voice belongs here — it fills this field — so it stays, and it is
+          // there whether or not somebody is typing.
+          VoiceButton(
+            key: const ValueKey<String>('mic'),
+            listening: _listening,
+            onPressed: _listenForSearch,
           ),
           // Beside the microphone, where the controls for the list belong. In
           // the greeting it read as part of the sentence above the mail.
@@ -854,103 +833,6 @@ class _MailboxScreenState extends State<MailboxScreen>
 
 }
 
-/// The search bar's microphone.
-///
-/// It pulses while the device is listening. Nothing else on screen changes when
-/// a recogniser is open — the speech app is a separate window — so on the way
-/// back this is what says the app is still waiting.
-class _MicButton extends StatefulWidget {
-  const _MicButton({
-    super.key,
-    required this.listening,
-    required this.onPressed,
-  });
-
-  final bool listening;
-  final VoidCallback onPressed;
-
-  @override
-  State<_MicButton> createState() => _MicButtonState();
-}
-
-class _MicButtonState extends State<_MicButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.listening) _pulse.repeat(reverse: true);
-  }
-
-  @override
-  void didUpdateWidget(_MicButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.listening == oldWidget.listening) return;
-    if (widget.listening) {
-      _pulse.repeat(reverse: true);
-    } else {
-      _pulse.animateTo(0, duration: AstryxMotion.of(AstryxMotion.fast));
-    }
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final AstryxColors c = context.astryx;
-
-    return AnimatedBuilder(
-      animation: _pulse,
-      builder: (BuildContext context, Widget? child) {
-        final double t = _pulse.value;
-        return Transform.scale(
-          scale: 1 + 0.06 * t,
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              // The ring grows and fades as it pulses, so the button reads as
-              // waiting rather than as broken.
-              color: widget.listening
-                  ? c.accent.withValues(alpha: 0.12 + 0.10 * t)
-                  : Colors.transparent,
-            ),
-            child: child,
-          ),
-        );
-      },
-      child: AceIconButton(
-        icon: AceIcons.mic,
-        // Still tappable while it is live, and does nothing: the listening is
-        // happening in the device's speech app, which this cannot reach in to
-        // stop. Saying so is better than a button that looks broken.
-        tooltip: widget.listening ? 'Listening…' : 'Search by voice',
-        onPressed: widget.onPressed,
-      ),
-    );
-  }
-}
-
-/// The bottom of the phone layout: the folder tabs, the assistant and Compose.
-///
-/// One widget because they share one strip of the screen, and they did not use
-/// to. The tabs were positioned from the left, the assistant from the centre,
-/// Compose from the right by the Scaffold — three things that did not know
-/// where the others were. A phone has no width for three pills in a row, so
-/// they drew on top of each other: Ask Chyme half behind Compose, and both of
-/// them over the folder tabs.
-///
-/// The assistant sits *above* Compose rather than beside it. A secondary action
-/// stacked over the primary one, both on the trailing edge, is the shape
-/// Material already uses for this, and it is the only arrangement that leaves
-/// the folder tabs their own width.
 class _BottomBar extends StatelessWidget {
   const _BottomBar({
     required this.contacts,
