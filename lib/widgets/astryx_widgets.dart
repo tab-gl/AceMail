@@ -247,11 +247,18 @@ class AceButton extends StatelessWidget {
       AceButtonVariant.success => (c.successMuted, c.success, false),
     };
 
-    final double height = switch (size) {
-      AceButtonSize.small => AstryxSize.elementMd,
-      AceButtonSize.medium => AstryxSize.elementLg,
-      AceButtonSize.large => AstryxSize.elementXl,
-    };
+    // A button's height is its label's height plus air, and the label grows
+    // with the text size while the box did not. The height follows the type:
+    // see [scaledForText], which is the same rule the folder bar and the
+    // assistant's pill use.
+    final double height = scaledForText(
+      context,
+      switch (size) {
+        AceButtonSize.small => AstryxSize.elementMd,
+        AceButtonSize.medium => AstryxSize.elementLg,
+        AceButtonSize.large => AstryxSize.elementXl,
+      },
+    );
     final double iconSize = size == AceButtonSize.large ? 21 : 18;
 
     final Widget content = Row(
@@ -267,10 +274,19 @@ class AceButton extends StatelessWidget {
           AceIconView(icon: icon!, size: iconSize, color: foreground),
           const SizedBox(width: AstryxSpace.s2),
         ],
-        Text(
-          label,
-          style: AstryxText.bodyStrong(foreground),
-          overflow: TextOverflow.ellipsis,
+        // Flexible, because a plain child of a Row is laid out with an
+        // *unbounded* main-axis width and simply draws past the button. The
+        // ellipsis was already set and could never fire: a Text with no limit
+        // wraps first, and one with an unbounded width does not wrap at all.
+        // Flexible gives it the room the button actually has; `maxLines: 1`
+        // gives the ellipsis something to truncate.
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            style: AstryxText.bodyStrong(foreground),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ],
     );
@@ -451,6 +467,10 @@ class AceFab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AstryxColors c = context.astryx;
+    // The FAB is a fixed-height pill with a word in it, so it takes the same
+    // rule as every other button rather than relying on its caller to hide the
+    // label when the type gets big.
+    final double height = scaledForText(context, AstryxSize.elementXl);
 
     return AceSpringy(
       enabled: onPressed != null,
@@ -465,7 +485,7 @@ class AceFab extends StatelessWidget {
           child: AnimatedContainer(
             duration: AstryxMotion.of(AstryxMotion.medium),
             curve: AstryxMotion.emphasized,
-            height: AstryxSize.elementXl,
+            height: height,
             padding: EdgeInsets.symmetric(
               horizontal: extended ? AstryxSpace.s5 : AstryxSpace.s4,
             ),
@@ -555,7 +575,16 @@ class AceChip extends StatelessWidget {
                   AceIconView(icon: icon!, size: 16, color: foreground),
                   const SizedBox(width: AstryxSpace.s1_5),
                 ],
-                Text(label, style: AstryxText.label(foreground)),
+                // One line, and no `Flexible`: a chip lives inside the
+                // horizontal scroll views in the sort sheet, where the width is
+                // unbounded and a flexible child is an assertion failure rather
+                // than a fix.
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AstryxText.label(foreground),
+                ),
               ],
             ),
           ),

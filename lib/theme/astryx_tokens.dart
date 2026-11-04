@@ -90,6 +90,32 @@ abstract final class AstryxRadius {
   static const double pill = full;
 }
 
+/// A stated height, grown with the text size.
+///
+/// Almost every fixed height in this app is a box with a label in it, and the
+/// label follows the device's accessibility setting while the box does not. At
+/// 1.5x a 40px button is 40px of text and no air; at 2x it is an overflow
+/// stripe across whatever is behind it. The app multiplies the system scale by
+/// its own text-size setting, so 2x is a setting somebody has rather than a
+/// torture test.
+///
+/// [growth] is how much of [base] is added at twice the text size. Half suits
+/// anything whose height is mostly its label, which is every button here.
+///
+/// One function rather than the same arithmetic in four widgets: they had
+/// drifted into four slightly different versions of "a bit taller", and the one
+/// that had not been updated was the one that broke.
+double scaledForText(
+  BuildContext context,
+  double base, {
+  double growth = 0.5,
+  double ceiling = 2.2,
+}) {
+  final double scale =
+      MediaQuery.textScalerOf(context).scale(1).clamp(1.0, ceiling);
+  return base + base * growth * (scale - 1);
+}
+
 /// Astryx's element sizes.
 abstract final class AstryxSize {
   static const double elementSm = 28;
