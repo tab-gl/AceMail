@@ -6,168 +6,21 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme/astryx_tokens.dart';
 import '../theme/astryx_theme.dart';
 import '../util/links.dart';
-
-/// One block of Markdown.
-sealed class MdBlock {
-  const MdBlock();
-}
-
-class MdHeading extends MdBlock {
-  const MdHeading(this.level, this.text);
-  final int level;
-  final String text;
-}
-
-class MdParagraph extends MdBlock {
-  const MdParagraph(this.text);
-  final String text;
-}
-
-class MdList extends MdBlock {
-  const MdList({required this.items, required this.ordered});
-  final List<String> items;
-  final bool ordered;
-}
-
-class MdQuote extends MdBlock {
-  const MdQuote(this.text);
-  final String text;
-}
-
-class MdCode extends MdBlock {
-  const MdCode(this.code, {this.language});
-  final String code;
-  final String? language;
-}
-
-class MdRule extends MdBlock {
-  const MdRule();
-}
-
-/// Splits Markdown into blocks.
-///
-/// Written here rather than pulled in, for the same reason the HTML renderer is
-/// a package and this is not: the HTML renderer had to survive mail, which is a
-/// museum of it, while this only has to survive an assistant that was asked to
-/// be brief. What it has to handle is a short list of things — a heading, a
-/// bullet, a numbered step, a code span, a bold word, a link — and everything
-/// else is a paragraph.
-///
-/// Pure, so the rules are tested without a widget tree.
-List<MdBlock> parseMarkdown(String source) {
-  final List<MdBlock> blocks = <MdBlock>[];
-  final List<String> lines = source.replaceAll('\r\n', '\n').split('\n');
-
-  final StringBuffer paragraph = StringBuffer();
-  final List<String> listItems = <String>[];
-  bool listOrdered = false;
-
-  void flushParagraph() {
-    final String text = paragraph.toString().trim();
-    if (text.isNotEmpty) blocks.add(MdParagraph(text));
-    paragraph.clear();
-  }
-
-  void flushList() {
-    if (listItems.isNotEmpty) {
-      blocks.add(MdList(items: List<String>.of(listItems), ordered: listOrdered));
-      listItems.clear();
-    }
-  }
-
-  int i = 0;
-  while (i < lines.length) {
-    final String line = lines[i];
-    final String trimmed = line.trim();
-
-    // A fenced block runs to its closing fence, or to the end if there is none
-    // — an assistant that forgets to close one should not lose the rest.
-    if (trimmed.startsWith('```')) {
-      flushParagraph();
-      flushList();
-      final String language = trimmed.substring(3).trim();
-      final List<String> code = <String>[];
-      i++;
-      while (i < lines.length && !lines[i].trim().startsWith('```')) {
-        code.add(lines[i]);
-        i++;
-      }
-      i++;
-      blocks.add(MdCode(code.join('\n'),
-          language: language.isEmpty ? null : language));
-      continue;
-    }
-
-    if (trimmed.isEmpty) {
-      flushParagraph();
-      flushList();
-      i++;
-      continue;
-    }
-
-    if (RegExp(r'^(-{3,}|\*{3,}|_{3,})$').hasMatch(trimmed)) {
-      flushParagraph();
-      flushList();
-      blocks.add(const MdRule());
-      i++;
-      continue;
-    }
-
-    final RegExpMatch? heading = RegExp(r'^(#{1,6})\s+(.*)$').firstMatch(trimmed);
-    if (heading != null) {
-      flushParagraph();
-      flushList();
-      blocks.add(MdHeading(heading.group(1)!.length, heading.group(2)!.trim()));
-      i++;
-      continue;
-    }
-
-    final RegExpMatch? quote = RegExp(r'^>\s?(.*)$').firstMatch(trimmed);
-    if (quote != null) {
-      flushParagraph();
-      flushList();
-      final List<String> quoted = <String>[quote.group(1)!];
-      i++;
-      while (i < lines.length &&
-          RegExp(r'^>\s?').hasMatch(lines[i].trim())) {
-        quoted.add(lines[i].trim().replaceFirst(RegExp(r'^>\s?'), ''));
-        i++;
-      }
-      blocks.add(MdQuote(quoted.join(' ').trim()));
-      continue;
-    }
-
-    final RegExpMatch? bullet =
-        RegExp(r'^([-*+]|\d+[.)])\s+(.*)$').firstMatch(trimmed);
-    if (bullet != null) {
-      flushParagraph();
-      final bool ordered = RegExp(r'^\d').hasMatch(bullet.group(1)!);
-      // A list that changes kind starts a new list, so a numbered list under a
-      // bulleted one does not silently become part of it.
-      if (listItems.isNotEmpty && ordered != listOrdered) flushList();
-      listOrdered = ordered;
-      listItems.add(bullet.group(2)!.trim());
-      i++;
-      continue;
-    }
-
-    flushList();
-    if (paragraph.isNotEmpty) paragraph.write(' ');
-    paragraph.write(trimmed);
-    i++;
-  }
-
-  flushParagraph();
-  flushList();
-  return blocks;
-}
+import '../util/markdown.dart';
 
 /// Renders Markdown in the app's own type.
 ///
 /// Links are tappable and carry the accent; code is monospaced on the raised
 /// surface. Nothing here is a Markdown *viewer* — there are no tables, no
 /// footnotes, no raw HTML — because what it renders is a chat reply.
-class MarkdownView extends StatelessWidget {
+///
+/// The parsing itself lives in `util/markdown.dart`. Stateful for two reasons:
+/// the blocks are parsed once per source rather than once per build (this sits
+/// inside chat and changelog surfaces that rebuild on scroll, on token arrival
+/// and on theme change), and a `TapGestureRecognizer` owns resources and has to
+/// be disposed — the same pattern `_PlainBodyState` in `message_reader.dart`
+/// uses for the plain-text body.
+class MarkdownView extends StatefulWidget {
   const MarkdownView({super.key, required this.source, this.onLink});
 
   final String source;
@@ -176,12 +29,64 @@ class MarkdownView extends StatelessWidget {
   final void Function(String url)? onLink;
 
   @override
+  State<MarkdownView> createState() => _MarkdownViewState();
+}
+
+class _MarkdownViewState extends State<MarkdownView> {
+  /// Compiled once rather than per inline block per build.
+  static final RegExp _inlinePattern = RegExp(
+    r'(`[^`]+`)' // code
+    r'|(\*\*[^*]+\*\*)' // bold
+    r'|(__[^_]+__)' // bold, the other way
+    r'|(\*[^*\n]+\*)' // italic
+    r'|(\[[^\]]+\]\([^)]+\))', // link
+  );
+
+  /// The link pattern the alternation above guarantees, matched against a token
+  /// that has already been found — so a failure here degrades to plain text
+  /// instead of throwing inside a frame.
+  static final RegExp _linkPattern = RegExp(r'^\[([^\]]+)\]\(([^)]+)\)$');
+
+  late List<MdBlock> _blocks;
+  final List<TapGestureRecognizer> _recognisers = <TapGestureRecognizer>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _blocks = parseMarkdown(widget.source);
+  }
+
+  @override
+  void didUpdateWidget(MarkdownView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.source != widget.source) {
+      _clearRecognisers();
+      _blocks = parseMarkdown(widget.source);
+    }
+  }
+
+  @override
+  void dispose() {
+    _clearRecognisers();
+    super.dispose();
+  }
+
+  void _clearRecognisers() {
+    for (final TapGestureRecognizer recogniser in _recognisers) {
+      recogniser.dispose();
+    }
+    _recognisers.clear();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final AstryxColors c = context.astryx;
-    final List<MdBlock> blocks = parseMarkdown(source);
+    // The spans are rebuilt below, so last build's recognisers are done.
+    _clearRecognisers();
+
     final List<Widget> children = <Widget>[];
 
-    for (final MdBlock block in blocks) {
+    for (final MdBlock block in _blocks) {
       if (children.isNotEmpty) children.add(const SizedBox(height: AstryxSpace.s2));
 
       switch (block) {
@@ -280,19 +185,16 @@ class MarkdownView extends StatelessWidget {
   }
 
   /// The inline rules: code, bold, italic, links.
+  ///
+  /// The alternation order is load-bearing: `**` is tried before `*` so bold
+  /// wins over italic, and the link form comes last so its brackets are not
+  /// mistaken for anything else.
   List<InlineSpan> _inline(BuildContext context, String text) {
     final AstryxColors c = context.astryx;
     final List<InlineSpan> spans = <InlineSpan>[];
-    final RegExp pattern = RegExp(
-      r'(`[^`]+`)'          // code
-      r'|(\*\*[^*]+\*\*)'   // bold
-      r'|(__[^_]+__)'       // bold, the other way
-      r'|(\*[^*\n]+\*)'     // italic
-      r'|(\[[^\]]+\]\([^)]+\))', // link
-    );
 
     int index = 0;
-    for (final RegExpMatch match in pattern.allMatches(text)) {
+    for (final RegExpMatch match in _inlinePattern.allMatches(text)) {
       if (match.start > index) {
         spans.add(TextSpan(text: text.substring(index, match.start)));
       }
@@ -323,10 +225,22 @@ class MarkdownView extends StatelessWidget {
           ),
         );
       } else {
-        final RegExpMatch link =
-            RegExp(r'^\[([^\]]+)\]\(([^)]+)\)$').firstMatch(token)!;
+        final RegExpMatch? link = _linkPattern.firstMatch(token);
+        if (link == null) {
+          // Cannot happen for a token the alternation matched; falling back to
+          // plain text is still better than a null assertion inside build.
+          spans.add(TextSpan(text: token));
+          index = match.end;
+          continue;
+        }
         final String label = link.group(1)!;
         final String url = link.group(2)!;
+        final void Function(String url)? onLink = widget.onLink;
+        TapGestureRecognizer? recogniser;
+        if (onLink != null) {
+          recogniser = TapGestureRecognizer()..onTap = () => onLink(url);
+          _recognisers.add(recogniser);
+        }
         spans.add(
           TextSpan(
             text: label,
@@ -334,9 +248,7 @@ class MarkdownView extends StatelessWidget {
               decoration: TextDecoration.underline,
               decorationColor: c.textAccent.withValues(alpha: 0.4),
             ),
-            recognizer: onLink == null
-                ? null
-                : (TapGestureRecognizer()..onTap = () => onLink!(url)),
+            recognizer: recogniser,
           ),
         );
       }
