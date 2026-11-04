@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/contact.dart';
@@ -27,6 +28,14 @@ abstract final class Contacts {
   /// what is dropped is what has not been used in the longest time.
   static const int limit = 600;
 
+  /// Storage names live here rather than inside the methods that build the
+  /// paths, so the two files this book owns are visible in one place.
+  static const String fileName = 'contacts.json';
+  static const String blockedFileName = 'blocked.json';
+
+  static final _JsonFileStore _store = _JsonFileStore(fileName);
+  static final _JsonFileStore _blockedStore = _JsonFileStore(blockedFileName);
+
   static final Map<String, Contact> _byEmail = <String, Contact>{};
 
   /// Addresses whose mail is kept out of the list.
@@ -36,9 +45,7 @@ abstract final class Contacts {
   /// that destroyed things would be a block nobody dared use.
   static final Set<String> _blocked = <String>{};
   static bool _blockedLoaded = false;
-  static File? _blockedFile;
   static bool _loaded = false;
-  static File? _file;
 
   /// Bumped whenever the book changes in a way a cached list would not see.
   ///
@@ -46,7 +53,14 @@ abstract final class Contacts {
   /// without a counter, blocking somebody would leave their mail on screen
   /// until something else moved. One integer is cheaper than invalidating every
   /// cache by hand.
-  static int revision = 0;
+  ///
+  /// Readers: the message list (blocked senders) and the contacts panel (the
+  /// saved/seen marks). Anything that mutates the book must bump it, which is
+  /// why the mutations below all go through one place.
+  static int _revision = 0;
+
+  /// The counter described above, for caches that need to know it moved.
+  static int get revision => _revision;
 
   /// Whether anything has been loaded or seen. The screen uses this to tell
   /// "no contacts yet" from "not read yet".
@@ -83,7 +97,7 @@ abstract final class Contacts {
     await _ensureBlocked();
     final String key = email.trim().toLowerCase();
     if (key.isEmpty || !_blocked.add(key)) return;
-    revision++;
+    _revision++;
     await _persistBlocked();
   }
 
@@ -91,35 +105,27 @@ abstract final class Contacts {
   static Future<void> unblock(String email) async {
     await _ensureBlocked();
     if (!_blocked.remove(email.trim().toLowerCase())) return;
-    revision++;
+    _revision++;
     await _persistBlocked();
   }
 
   static Future<void> _ensureBlocked() async {
     if (_blockedLoaded) return;
+    final List<Object?>? rows = await _blockedStore.readList();
+    // The flag used to be set before the read, so one failure left the blocklist
+    // "loaded and empty" for the rest of the process and blocked senders came
+    // back. A missing file is still a legitimate empty blocklist; a file that is
+    // there and would not read leaves the flag down so the next call retries.
+    if (rows == null && await _blockedStore.exists()) return;
+    _blocked
+      ..clear()
+      ..addAll((rows ?? const <Object?>[]).whereType<String>().map((String s) => s.toLowerCase()));
     _blockedLoaded = true;
-    try {
-      await _ensureFile();
-      _blockedFile = File('${_file!.parent.path}/blocked.json');
-      if (!await _blockedFile!.exists()) return;
-      final Object? decoded = jsonDecode(await _blockedFile!.readAsString());
-      if (decoded is! List) return;
-      _blocked
-        ..clear()
-        ..addAll(decoded.whereType<String>().map((String s) => s.toLowerCase()));
-    } catch (_) {
-      // A file that will not read is an empty blocklist, not a crash.
-    }
   }
 
   static Future<void> _persistBlocked() async {
-    try {
-      await _ensureBlocked();
-      await _blockedFile!.writeAsString(jsonEncode(blocked), flush: true);
-    } catch (_) {
-      // Losing the file loses the blocklist. Nothing else is affected, and
-      // nothing has been destroyed on the server either way.
-    }
+    await _ensureBlocked();
+    await _blockedStore.writeList(blocked);
   }
 
   /// The ones worth showing for [query]. Empty query means everyone.
@@ -136,32 +142,20 @@ abstract final class Contacts {
   static Contact? byEmail(String email) =>
       _byEmail[email.trim().toLowerCase()];
 
-  static Future<void> _ensureFile() async {
-    if (_file != null) return;
-    final Directory directory =
-        await getApplicationSupportDirectory();
-    _file = File('${directory.path}/contacts.json');
-  }
-
   /// Reads what was kept. Safe to call more than once.
   static Future<void> load() async {
     if (_loaded) return;
+    final List<Object?>? rows = await _store.readList();
+    // As with the blocklist: a file that is present but unreadable is retried
+    // rather than remembered as an empty book.
+    if (rows == null && await _store.exists()) return;
     _loaded = true;
-    try {
-      await _ensureFile();
-      final File file = _file!;
-      if (!await file.exists()) return;
-      final Object? decoded = jsonDecode(await file.readAsString());
-      if (decoded is! List) return;
-      for (final Object? entry in decoded) {
-        if (entry is! Map<String, dynamic>) continue;
-        final Contact contact = Contact.fromJson(entry);
-        if (contact.email.isEmpty) continue;
-        _byEmail[contact.email.toLowerCase()] = contact;
-      }
-    } catch (_) {
-      // An unreadable contact file is not worth an error: the addresses are
-      // still in the mail, and the list fills up again as it loads.
+    if (rows == null) return;
+    for (final Object? entry in rows) {
+      if (entry is! Map<String, dynamic>) continue;
+      final Contact contact = Contact.fromJson(entry);
+      if (contact.email.isEmpty) continue;
+      _byEmail[contact.email.toLowerCase()] = contact;
     }
   }
 
@@ -191,17 +185,8 @@ abstract final class Contacts {
   }
 
   static Future<void> _persist() async {
-    try {
-      await _ensureFile();
-      _trim();
-      await _file!.writeAsString(
-        jsonEncode(<Object>[for (final Contact c in all) c.toJson()]),
-        flush: true,
-      );
-    } catch (_) {
-      // Losing the file loses the "saved" marks, which is a real loss but not
-      // one worth interrupting anybody over.
-    }
+    _trim();
+    await _store.writeList(<Object>[for (final Contact c in all) c.toJson()]);
   }
 
   static void _trim() {
@@ -228,22 +213,17 @@ abstract final class Contacts {
   /// recipients, and guessing them from a folder would put the account holder
   /// in their own contact list.
   static void observe(List<MessageSummary> messages) {
-    bool changed = false;
-    for (final MessageSummary message in messages) {
-      changed |= _record(message.fromEmail, message.fromName, message.date);
-    }
-    if (changed) {
-      revision++;
-      _schedulePersist();
-    }
+    _recordAll(<({String email, String name, DateTime? when})>[
+      for (final MessageSummary message in messages)
+        (email: message.fromEmail, name: message.fromName, when: message.date),
+    ]);
   }
 
-  /// Records who an opened message was sent to.
+  /// Records the people a message was sent to.
   ///
   /// The only place the recipients appear — a list row carries the sender and
   /// nothing else — and they come without names, because the model keeps the
   /// addresses as a plain string. A name arrives later, from mail they send.
-  /// Records the people a message was sent to.
   ///
   /// Called when a message goes out, not only when one is opened. Loading the
   /// Sent folder does not do this: every message in it has *you* in the From
@@ -251,28 +231,31 @@ abstract final class Contacts {
   /// people you actually write to. The addresses you chose at send time are the
   /// only place that information exists.
   static void recordSent(Iterable<String> addresses, {DateTime? when}) {
-    bool changed = false;
-    for (final String email in addresses) {
-      changed |= _record(email, '', when);
-    }
-    if (changed) {
-      revision++;
-      _schedulePersist();
-    }
+    _recordAll(<({String email, String name, DateTime? when})>[
+      for (final String email in addresses) (email: email, name: '', when: when),
+    ]);
   }
 
   static void observeRecipients(FullMessage message) {
+    _recordAll(<({String email, String name, DateTime? when})>[
+      for (final String email in <String>[
+        ...message.toEmails.split(','),
+        ...message.ccEmails.split(','),
+      ])
+        (email: email, name: '', when: message.date),
+    ]);
+  }
+
+  /// The one record-and-schedule path the three observers above share.
+  static void _recordAll(
+      Iterable<({String email, String name, DateTime? when})> seen) {
     bool changed = false;
-    for (final String email in <String>[
-      ...message.toEmails.split(','),
-      ...message.ccEmails.split(','),
-    ]) {
-      changed |= _record(email, '', message.date);
+    for (final ({String email, String name, DateTime? when}) entry in seen) {
+      changed |= _record(entry.email, entry.name, entry.when);
     }
-    if (changed) {
-      revision++;
-      _schedulePersist();
-    }
+    if (!changed) return;
+    _revision++;
+    _schedulePersist();
   }
 
   static bool _record(String email, String name, DateTime? when) {
@@ -304,7 +287,6 @@ abstract final class Contacts {
     return true;
   }
 
-
   /// Saves or forgets one. Forgetting an address the app has seen leaves it in
   /// the list as an unsaved contact rather than removing it — it is still in
   /// the mail, and pretending otherwise would be a lie the next page undoes.
@@ -319,6 +301,9 @@ abstract final class Contacts {
     } else {
       _byEmail[key] = existing.copyWith(saved: saved);
     }
+    // Saving or un-saving moves the saved/seen marks the panel draws, so the
+    // counter has to move too; every other mutation here already does.
+    _revision++;
     await _persist();
   }
 
@@ -329,7 +314,7 @@ abstract final class Contacts {
     final Contact contact = (_byEmail[key] ?? Contact(email: key))
         .copyWith(name: name.trim(), saved: true);
     _byEmail[key] = contact;
-    revision++;
+    _revision++;
     await _persist();
     return contact;
   }
@@ -345,7 +330,7 @@ abstract final class Contacts {
     final bool had = _byEmail.remove(key) != null;
     final bool blocked = _blocked.remove(key);
     if (!had && !blocked) return;
-    revision++;
+    _revision++;
     if (blocked) await _persistBlocked();
     await _persist();
   }
@@ -385,7 +370,7 @@ abstract final class Contacts {
       }
     }
     if (changed > 0) {
-      revision++;
+      _revision++;
       await _persist();
     }
     return changed;
@@ -394,7 +379,74 @@ abstract final class Contacts {
   /// Drops the addresses the app merely saw, keeping the saved ones.
   static Future<void> forgetSeen() async {
     _byEmail.removeWhere((_, Contact c) => !c.saved);
-    revision++;
+    _revision++;
     await _persist();
+  }
+}
+
+/// One JSON list on disk.
+///
+/// The address book and the blocklist are the same shape — a file holding a
+/// JSON list, read once and rewritten whole — and each used to carry its own
+/// copy of the lazy-path / exists / decode / guard / swallow dance. The copy
+/// also held the resolved path in a nullable static that was dereferenced after
+/// an await; here the path is resolved inside the call that uses it.
+class _JsonFileStore {
+  _JsonFileStore(this.fileName);
+
+  final String fileName;
+  Future<File>? _resolved;
+
+  Future<File> _file() {
+    return _resolved ??= () async {
+      final Directory directory = await getApplicationSupportDirectory();
+      return File('${directory.path}/$fileName');
+    }();
+  }
+
+  /// Whether the file is on disk, as opposed to absent or unreadable.
+  ///
+  /// False when the storage directory cannot be resolved at all, which is the
+  /// normal answer under a test harness with no path provider.
+  Future<bool> exists() async {
+    try {
+      return await (await _file()).exists();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// The stored list, or null when there is no file yet or it cannot be read.
+  ///
+  /// A missing file is normal. A corrupt one is not, and used to be
+  /// indistinguishable from an empty book — the next write then overwrote the
+  /// evidence. It is reported instead.
+  Future<List<Object?>?> readList() async {
+    try {
+      final File file = await _file();
+      if (!await file.exists()) return null;
+      final Object? decoded = jsonDecode(await file.readAsString());
+      return decoded is List ? decoded : null;
+    } on FormatException catch (error) {
+      debugPrint('Contacts: $fileName is not valid JSON (${error.message}); starting empty.');
+      return null;
+    } catch (error) {
+      // No storage directory, no permission, an unreadable file: all of them
+      // used to disappear into `catch (_)` with no trace at all.
+      debugPrint('Contacts: could not read $fileName ($error).');
+      return null;
+    }
+  }
+
+  Future<void> writeList(List<Object?> rows) async {
+    try {
+      final File file = await _file();
+      await file.writeAsString(jsonEncode(rows), flush: true);
+    } catch (error) {
+      // Losing the file loses the saved marks or the blocklist, which is a real
+      // loss but not one worth interrupting anybody over - but it is now
+      // visible instead of silent.
+      debugPrint('Contacts: could not write $fileName ($error).');
+    }
   }
 }
