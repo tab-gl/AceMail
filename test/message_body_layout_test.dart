@@ -1,7 +1,10 @@
 import 'package:ace_mail/data/preferences.dart';
+import 'package:ace_mail/models/message_summary.dart';
+import 'package:ace_mail/services/mail_highlights.dart';
 import 'package:ace_mail/theme/ace_icons.dart';
 import 'package:ace_mail/theme/astryx_theme.dart';
 import 'package:ace_mail/widgets/ace_floating_nav.dart';
+import 'package:ace_mail/widgets/highlights_rail.dart';
 import 'package:ace_mail/widgets/message_html.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -120,6 +123,106 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(tester.getSize(find.byType(AceFloatingNav<bool>)).height, 60);
+    });
+  });
+
+  group('at an accessibility text size', () {
+    // The app multiplies the device's text size by its own, so 2.0 is a real
+    // setting and not a torture test. Every fixed height in the app is a bug at
+    // 2.0: a box measured at one text size paints overflow stripes at another,
+    // and stripes on the mail list are the loudest thing the app can do.
+    MediaQuery big(Widget child) => MediaQuery(
+          data: MediaQueryData(
+            size: const Size(400, 800),
+            textScaler: const TextScaler.linear(2),
+          ),
+          child: child,
+        );
+
+    testWidgets('a highlight card grows to hold its own text',
+        (WidgetTester tester) async {
+      final MessageSummary message = MessageSummary(
+        uid: 1,
+        sequenceId: 1,
+        subject: 'Your package is out for delivery and arriving today',
+        fromName: 'A Courier With A Long Name',
+        fromEmail: 'noreply@courier.example',
+        date: DateTime.now(),
+        isSeen: false,
+        isFlagged: false,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAstryxTheme(Brightness.light),
+          home: big(
+            Scaffold(
+              body: HighlightsRail(
+                highlights: <MailHighlight>[
+                  MailHighlight(
+                    kind: HighlightKind.delivery,
+                    message: message,
+                    title: message.subject,
+                    detail: message.fromName,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the nav bar grows to hold its own label',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        ChangeNotifierProvider<Preferences>.value(
+          value: Preferences(),
+          child: MaterialApp(
+            theme: buildAstryxTheme(Brightness.light),
+            home: big(
+              Scaffold(
+                body: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Row(
+                    children: <Widget>[
+                      AceFloatingNav<bool>(
+                        floating: false,
+                        value: false,
+                        onChanged: (bool _) {},
+                        items: const <AceNavItem<bool>>[
+                          AceNavItem<bool>(
+                            value: false,
+                            icon: AceIcons.inbox,
+                            label: 'Mail',
+                          ),
+                          AceNavItem<bool>(
+                            value: true,
+                            icon: AceIcons.contacts,
+                            label: 'Contacts',
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(tester.takeException(), isNull);
+      // Taller than the 60 it is drawn at by default, because the label in it
+      // is twice the size.
+      expect(
+        tester.getSize(find.byType(AceFloatingNav<bool>)).height,
+        greaterThan(60),
+      );
     });
   });
 }

@@ -245,13 +245,19 @@ class _Fact extends StatelessWidget {
   Widget build(BuildContext context) {
     final AstryxColors c = context.astryx;
 
+    // The label column is wide enough for the label at the size it is being
+    // drawn at. A fixed width is right at one text size and an overflow at
+    // another, and "Signed by" is the widest of them.
+    final double scale =
+        MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.8);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: AstryxSpace.s2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           SizedBox(
-            width: 92,
+            width: 92 * scale,
             child: Text(label, style: AstryxText.supporting(c.textSecondary)),
           ),
           Expanded(
@@ -299,7 +305,8 @@ class _Verdict extends StatelessWidget {
           AceIconView(icon: icon, size: 15, color: ink),
           const SizedBox(width: AstryxSpace.s2),
           SizedBox(
-            width: 68,
+            width: 68 *
+                MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.8),
             child: Text(label, style: AstryxText.bodyStrong(c.textPrimary)),
           ),
           Expanded(

@@ -26,10 +26,26 @@ class HighlightsRail extends StatelessWidget {
 
   final List<MailHighlight> highlights;
 
-  /// How tall one card is. Fixed, because a horizontal list needs a height and
-  /// because cards of different heights in one row read as a layout mistake.
-  static const double cardHeight = 118;
   static const double cardWidth = 244;
+
+  /// How tall one card is at the text size it is running at.
+  ///
+  /// A horizontal list needs a stated height, and cards of different heights in
+  /// one row read as a layout mistake — so the height is computed rather than
+  /// left to the content. It used to be a constant, and a constant only holds
+  /// at one text size: two lines of title and a line of sender at 1.3x are
+  /// taller than 118, and a card too short for its own text paints the overflow
+  /// stripes across the middle of the list. This is the fixed parts — the
+  /// padding, the kind row and the two gaps — plus the text measured in the
+  /// type it is actually drawn in.
+  static double cardHeight(BuildContext context) {
+    final double scale =
+        MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 2.5);
+    const double fixed = 60;
+    const double title = AstryxType.sXl * 1.32 * 2;
+    const double detail = AstryxType.sXs * 1.45;
+    return fixed + (title + detail) * scale;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +89,7 @@ class HighlightsRail extends StatelessWidget {
             ),
           ),
           SizedBox(
-            height: cardHeight,
+            height: cardHeight(context),
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               // The list behind this one scrolls vertically; a horizontal rail
@@ -123,6 +139,10 @@ class _HighlightCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AstryxRadius.lg),
                 border: Border.all(color: c.border, width: 1),
               ),
+              // A card is a fixed box with text in it, and the two are measured
+              // separately. Clipping means a size nobody predicted cuts the last
+              // line off rather than painting it outside the card.
+              clipBehavior: Clip.antiAlias,
               padding: const EdgeInsets.all(AstryxSpace.s3),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -142,11 +162,20 @@ class _HighlightCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: AstryxSpace.s2),
-                      Text(
-                        highlight.kind.label.toUpperCase(),
-                        style: AstryxText.label(ink).copyWith(
-                          letterSpacing: 1,
-                          fontWeight: AstryxType.semibold,
+                      // Flexible, so the kind label gives way rather than
+                      // pushing the row past the edge of the card: it is the
+                      // only thing in this row that is not a fixed size, and a
+                      // word in a fixed-width card with no way to shrink is an
+                      // overflow waiting for a bigger font.
+                      Flexible(
+                        child: Text(
+                          highlight.kind.label.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AstryxText.label(ink).copyWith(
+                            letterSpacing: 1,
+                            fontWeight: AstryxType.semibold,
+                          ),
                         ),
                       ),
                     ],
