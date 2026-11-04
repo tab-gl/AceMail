@@ -3,6 +3,28 @@
 Notable changes, newest first. Versions follow `pubspec.yaml`; the build number
 after the `+` is the Android version code.
 
+## 0.6.2+108
+
+### Changed
+- **The APKs are published as APKs.** They were only ever available as a build
+  artifact, and an artifact is always a zip — there is no way to upload a bare
+  file to Actions. They now go onto the rolling `apk-latest` release the moment
+  the Android build finishes, as two separate assets you can tap and install,
+  without waiting for the desktop or iOS builds and without unpacking anything.
+  The release keeps only the current build; last version's files are cleared.
+
+### Fixed
+- **Highlights cards and the bottom bar hold their text at any text size.** Both
+  were boxes with a fixed height and text inside them, which is right at the
+  default size and an overflow at 1.3x — and the app multiplies the device's
+  text size by its own, so 2x is a setting somebody has. The card, the folder
+  bar and the room the bar takes out of the list now follow the type, the
+  Compose button drops its label when the width runs out, and the tabs scale
+  down rather than painting stripes through the screen.
+- **The security sheet's labels no longer run into their values.** "Signed by"
+  and "DMARC" were in fixed-width columns, which is the same fixed-size mistake
+  one level down.
+
 ## 0.6.2+107
 
 ### Fixed

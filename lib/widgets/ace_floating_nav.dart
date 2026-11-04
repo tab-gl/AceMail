@@ -47,6 +47,19 @@ class AceNavItem<T> {
 const double _barHeight = 60;
 const double _itemHeight = 44;
 
+/// A height from the bar's scale, grown with the text size.
+///
+/// Both numbers above are the size the bar is drawn at the default text size.
+/// The label inside an item scales with the device's accessibility setting and
+/// the app's own text size, and a label at 1.5x is taller than the 44 the item
+/// was given — which paints the overflow stripes through the middle of the bar.
+/// The box follows the type instead.
+double _scaledHeight(BuildContext context, double base) {
+  final double scale =
+      MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 2.2);
+  return base + base * 0.5 * (scale - 1);
+}
+
 class AceFloatingNav<T> extends StatelessWidget {
   const AceFloatingNav({
     super.key,
@@ -74,7 +87,7 @@ class AceFloatingNav<T> extends StatelessWidget {
     final AstryxColors c = context.astryx;
 
     final Widget bar = SizedBox(
-          height: _barHeight,
+          height: _scaledHeight(context, _barHeight),
           child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AstryxRadius.pill),
@@ -172,7 +185,7 @@ class _NavButton<T> extends StatelessWidget {
         child: AnimatedContainer(
           duration: AstryxMotion.of(const Duration(milliseconds: 300)),
           curve: AstryxMotion.emphasized,
-          height: _itemHeight,
+          height: _scaledHeight(context, _itemHeight),
           padding: const EdgeInsets.symmetric(
             horizontal: AstryxSpace.s3,
             vertical: AstryxSpace.s2,

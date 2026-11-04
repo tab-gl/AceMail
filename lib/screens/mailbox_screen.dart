@@ -974,7 +974,12 @@ class _BottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool roomy = MediaQuery.sizeOf(context).width >= _roomForALabel;
+    // The width the label actually needs, not the width it needs at one text
+    // size: "Compose" at 2x is twice as wide, and a row that was measured at 1x
+    // overflows by exactly that much.
+    final double scale =
+        MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 2.2);
+    final bool roomy = MediaQuery.sizeOf(context).width >= _roomForALabel * scale;
 
     return SafeArea(
       minimum: const EdgeInsets.fromLTRB(
@@ -993,27 +998,41 @@ class _BottomBar extends StatelessWidget {
           ),
           const SizedBox(height: AstryxSpace.s3),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
-              AceFloatingNav<bool>(
-                // The safe area is this column's, applied once around all of
-                // it: the nav brings its own only when it is alone down here.
-                floating: false,
-                value: contacts,
-                onChanged: onContactsChanged,
-                items: const <AceNavItem<bool>>[
-                  AceNavItem<bool>(
-                    value: false,
-                    icon: AceIcons.inbox,
-                    label: 'Mail',
+              // The tabs are the one thing in this row that cannot be
+              // shortened — a folder you cannot name is not a folder — so when
+              // the text size outgrows the screen the whole bar scales down a
+              // little rather than painting overflow stripes through itself.
+              // At every normal size this is a no-op: `scaleDown` only ever
+              // shrinks what does not fit.
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: AceFloatingNav<bool>(
+                    // The safe area is this column's, applied once around all
+                    // of it: the nav brings its own only when it is alone down
+                    // here.
+                    floating: false,
+                    value: contacts,
+                    onChanged: onContactsChanged,
+                    items: const <AceNavItem<bool>>[
+                      AceNavItem<bool>(
+                        value: false,
+                        icon: AceIcons.inbox,
+                        label: 'Mail',
+                      ),
+                      AceNavItem<bool>(
+                        value: true,
+                        icon: AceIcons.contacts,
+                        label: 'Contacts',
+                      ),
+                    ],
                   ),
-                  AceNavItem<bool>(
-                    value: true,
-                    icon: AceIcons.contacts,
-                    label: 'Contacts',
-                  ),
-                ],
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: AstryxSpace.s3),
               AceFab(
                 label: 'Compose',
                 icon: AceIcons.edit,

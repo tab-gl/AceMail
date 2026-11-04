@@ -226,6 +226,63 @@ jobs:
           path: build/app/outputs/flutter-apk/app-armeabi-v7a-debug.apk
           if-no-files-found: error
 
+  # The APKs on their own, the moment they exist.
+  #
+  # An Actions artifact is always handed over as a zip — there is no option to
+  # upload a bare file — so a release asset is the only way to give somebody an
+  # `.apk` they can download and install without unpacking anything first.
+  #
+  # This job waits for the Android build and for nothing else. The phone is
+  # where this gets installed, and it should not be waiting on a macOS runner to
+  # find a machine. It owns the rolling `apk-latest` release on a push to main;
+  # the `release` job owns it on a manual run, so the two never write it at once.
+  publish-apks:
+    name: Publish the APKs
+    needs: [build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the APKs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: AceMail-*-android-*
+          path: apk
+          merge-multiple: true
+
+      # The rolling release carries the current build and nothing else. Without
+      # this it would collect an APK from every version that ever shipped, and
+      # the newest one would be one of a dozen nearly identical names.
+      - name: Clear the previous APKs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view apk-latest --json assets --jq '.assets[].name' 2>/dev/null \
+            | grep -E '\.apk$' \
+            | while read -r NAME; do
+                gh release delete-asset apk-latest "$NAME" --yes
+              done || true
+          ls -l apk
+
+      - name: Publish
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: apk-latest
+          name: Latest build
+          body: |
+            Signed APKs built from `${{ github.sha }}`.
+
+            Pick the one for your phone: **arm64-v8a** is every 64-bit Android
+            device made since about 2016, **armeabi-v7a** is for 32-bit ones.
+            If you are not sure, take arm64-v8a.
+
+            These are release-signed, so each installs over the last one.
+          files: apk/AceMail-*.apk
+          prerelease: true
+          fail_on_unmatched_files: true
+
   # The other two platforms. Separate jobs because each needs a different
   # machine, and a failure in one must not stop the others from being
   # published — a build that works is worth more than a tidy run.

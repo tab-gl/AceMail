@@ -367,7 +367,15 @@ class MessageListPanel extends StatelessWidget {
       SliverToBoxAdapter(
         child: SizedBox(
           height: MediaQuery.sizeOf(context).width < _phoneBreakpoint
-              ? _phoneBarClearance
+              // The bar grows with the text size, so the room it needs does
+              // too. A fixed clearance is enough until somebody turns the type
+              // up, and then the last message sits under the tabs.
+              ? _phoneBarClearance +
+                  (MediaQuery.textScalerOf(context)
+                              .scale(1)
+                              .clamp(1.0, 2.2) -
+                          1) *
+                      80
               : AstryxSpace.s10,
         ),
       ),

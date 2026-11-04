@@ -1,7 +1,7 @@
 name: ace_mail
 description: A fast, native IMAP/SMTP mail client for mobile and desktop.
 publish_to: "none"
-version: 0.6.2+107
+version: 0.6.2+108
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
