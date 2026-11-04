@@ -3,6 +3,24 @@
 Notable changes, newest first. Versions follow `pubspec.yaml`; the build number
 after the `+` is the Android version code.
 
+## 0.6.2+109
+
+### Added
+- **Ask Chyme by voice.** A microphone beside the field in the assistant's
+  composer, at 48 against the 44 of every other icon button — speaking a
+  question instead of typing it is the reason a phone assistant exists, and it
+  should not arrive as the smallest thing in the row. What it hears lands in the
+  field rather than being sent: recognition mishears, and a question that goes
+  off exactly as the device heard it is one you cannot fix before it costs you
+  an answer.
+
+### Changed
+- **The assistant's mark has left the search bar.** Ask Chyme has a pill along
+  the bottom edge, so the second door to the same room — a small mark inside a
+  search field — was two taps for one intention and one of them in the wrong
+  place. The microphone keeps the slot, and is now there whether or not somebody
+  is typing.
+
 ## 0.6.2+108
 
 ### Changed

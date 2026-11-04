@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -14,11 +15,13 @@ import '../services/chyme.dart';
 import '../services/chyme_context.dart';
 import '../services/chyme_tools.dart';
 import '../services/contacts.dart';
+import '../services/voice_input.dart';
 import '../state/mail_controller.dart';
 import '../theme/ace_icons.dart';
 import '../theme/astryx_theme.dart';
 import '../theme/astryx_tokens.dart';
 import '../util/ace_snack.dart';
+import '../util/haptics.dart';
 import '../util/routes.dart';
 import 'ace_confirm.dart';
 import 'ace_form_field.dart';
@@ -28,6 +31,7 @@ import 'astryx_widgets.dart';
 import 'chyme_mark.dart';
 import 'chyme_pickers.dart';
 import 'markdown_view.dart';
+import 'voice_button.dart';
 
 /// Chyme, as a sheet.
 ///
@@ -73,6 +77,9 @@ class _ChymeSheetState extends State<ChymeSheet> {
   bool _busy = false;
   String? _error;
 
+  /// Whether the device is listening for a question.
+  bool _listening = false;
+
   /// The search the last reply asked for, if it asked for one.
   String? _search;
 
@@ -95,6 +102,31 @@ class _ChymeSheetState extends State<ChymeSheet> {
     _input.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  /// Dictates the question instead of typing it.
+  ///
+  /// The words land in the field rather than being sent. Speech recognition
+  /// mishears — a name, a number, a word that sounds like another word — and a
+  /// question that goes to the assistant exactly as the device heard it is a
+  /// question the person cannot fix before it costs them an answer. They can
+  /// read it, change it, then send it.
+  Future<void> _listen() async {
+    if (_listening) return;
+    unawaited(AceHaptics.tap());
+    setState(() => _listening = true);
+    try {
+      final String? heard = await VoiceInput.listen();
+      if (!mounted || heard == null) return;
+      _input.text = heard;
+      _input.selection = TextSelection.collapsed(offset: heard.length);
+      setState(() {});
+    } catch (error) {
+      if (!mounted) return;
+      AceSnack.show(context, '$error');
+    } finally {
+      if (mounted) setState(() => _listening = false);
+    }
   }
 
   /// What Chyme is told about the screen.
@@ -694,6 +726,20 @@ class _ChymeSheetState extends State<ChymeSheet> {
                           ),
                         ),
                       ),
+                    ),
+                    const SizedBox(width: AstryxSpace.s2),
+                    // Voice, at the size of a decision rather than the size of
+                    // an icon in a row of them. Speaking a question instead of
+                    // typing it is what a phone assistant is for, and this is
+                    // the control that had to stay big when it arrived here
+                    // from the search bar: 48 against the 44 of every other
+                    // icon button, so it reads as the second way to ask rather
+                    // than as decoration beside the field.
+                    VoiceButton(
+                      size: 48,
+                      label: 'Ask by voice',
+                      listening: _listening,
+                      onPressed: _listen,
                     ),
                     const SizedBox(width: AstryxSpace.s2),
                     AceIconButton(
