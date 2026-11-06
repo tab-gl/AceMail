@@ -9,6 +9,7 @@ import '../screens/compose_screen.dart';
 import '../screens/settings_screen.dart';
 import '../services/chyme.dart';
 import '../services/chyme_context.dart';
+import '../services/chyme_message_ref.dart';
 import '../services/chyme_tools.dart';
 import '../services/contacts.dart';
 import '../services/voice_input.dart';
@@ -249,7 +250,7 @@ class _ChymeSheetState extends State<ChymeSheet> {
 
   String _subjectFor(String argument) {
     final MailController controller = context.read<MailController>();
-    final MessageSummary? message = _find(controller, argument);
+    final MessageSummary? message = ChymeMessageRef.find(controller, argument);
     final String subject = message?.subject.trim() ?? '';
     if (subject.isEmpty) return '';
     return subject.length > 34 ? '${subject.substring(0, 33)}…' : subject;
@@ -292,20 +293,20 @@ class _ChymeSheetState extends State<ChymeSheet> {
       // copy so a question about it needs no tool at all; this is for the long
       // one, where the answer is further down than the excerpt.
       'read': (String argument) async {
-        final MessageSummary? summary = _find(controller, argument);
+        final MessageSummary? summary = ChymeMessageRef.find(controller, argument);
         final FullMessage? open = controller.openMessage;
         if (summary == null && open == null) return 'No message is open.';
         if (summary != null && open != null && summary.uid == open.uid) {
-          return _describe(open);
+          return ChymeMessageRef.describe(open);
         }
-        if (summary == null) return _describe(open!);
+        if (summary == null) return ChymeMessageRef.describe(open!);
         // A row that is not open has no body in memory; opening it is what the
         // person would do, and it is what this does — through the controller,
         // so the reader follows.
         await controller.open(summary);
         final FullMessage? loaded = controller.openMessage;
         if (loaded == null) return 'That message could not be opened.';
-        return _describe(loaded);
+        return ChymeMessageRef.describe(loaded);
       },
       'search': (String argument) async {
         final String needle = argument.toLowerCase().trim();
@@ -329,34 +330,34 @@ class _ChymeSheetState extends State<ChymeSheet> {
             .join('\n');
       },
       'star': (String argument) async {
-        final MessageSummary? message = _find(controller, argument);
+        final MessageSummary? message = ChymeMessageRef.find(controller, argument);
         if (message == null) return 'No message with that number.';
         if (message.isFlagged) return 'Already starred: ${message.subject}.';
         await controller.toggleFlag(message);
         return 'Starred "${message.subject}".';
       },
       'unstar': (String argument) async {
-        final MessageSummary? message = _find(controller, argument);
+        final MessageSummary? message = ChymeMessageRef.find(controller, argument);
         if (message == null) return 'No message with that number.';
         if (!message.isFlagged) return 'Not starred: ${message.subject}.';
         await controller.toggleFlag(message);
         return 'Removed the star from "${message.subject}".';
       },
       'seen': (String argument) async {
-        final MessageSummary? message = _find(controller, argument);
+        final MessageSummary? message = ChymeMessageRef.find(controller, argument);
         if (message == null) return 'No message with that number.';
         if (message.isSeen) return 'Already read: ${message.subject}.';
         await controller.markRead(message);
         return 'Marked "${message.subject}" read.';
       },
       'archive': (String argument) async {
-        final MessageSummary? message = _find(controller, argument);
+        final MessageSummary? message = ChymeMessageRef.find(controller, argument);
         if (message == null) return 'No message with that number.';
         await controller.archive(message);
         return 'Archived "${message.subject}".';
       },
       'delete': (String argument) async {
-        final MessageSummary? message = _find(controller, argument);
+        final MessageSummary? message = ChymeMessageRef.find(controller, argument);
         if (message == null) return 'No message with that number.';
         if (!mounted) return 'The sheet closed; nothing was deleted.';
         final bool yes = await _ask(
@@ -375,7 +376,7 @@ class _ChymeSheetState extends State<ChymeSheet> {
         final String body = parts.length > 1
             ? parts.sublist(1).join('|').trim()
             : '';
-        final MessageSummary? message = _find(controller, parts.first);
+        final MessageSummary? message = ChymeMessageRef.find(controller, parts.first);
         if (message == null) return 'No message with that number.';
         if (body.isEmpty) {
           return 'A reply needs a message number and a body, like: '
@@ -455,34 +456,6 @@ class _ChymeSheetState extends State<ChymeSheet> {
         return 'Removed $email from their contacts.';
       },
     };
-  }
-
-  /// The message a tool argument names, or null.
-  ///
-  /// Tolerant on purpose: a model will write `12`, `#12`, `[12]` and
-  /// `uid 12`, and all four mean the same message. "open" means the one on
-  /// screen, which is the only name that survives a list that has moved.
-  MessageSummary? _find(MailController controller, String argument) {
-    final String cleaned = argument.trim().toLowerCase();
-    final MessageSummary? open = controller.openSummary;
-    if (cleaned == 'open' || cleaned == 'current') return open;
-    final String digits = cleaned.replaceAll(RegExp(r'[^0-9]'), '');
-    final int? uid = int.tryParse(digits);
-    if (uid == null) return open;
-    if (open?.uid == uid) return open;
-    for (final MessageSummary message in controller.visibleMessages) {
-      if (message.uid == uid) return message;
-    }
-    return null;
-  }
-
-  String _describe(FullMessage message) {
-    final String body = message.textBody.trim();
-    final String html = message.htmlSource ?? '';
-    final String text = body.isNotEmpty ? body : html;
-    if (text.isEmpty) return 'The message has no readable body.';
-    return 'From ${message.fromName} \u2014 ${message.subject}\n\n'
-        '${text.length > 6000 ? '${text.substring(0, 6000)}\u2026' : text}';
   }
 
   /// A question with the detail in it, answered before anything is destroyed.
