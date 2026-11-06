@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../services/chyme.dart';
 import '../../theme/ace_icons.dart';
 import '../../theme/astryx_theme.dart';
 import '../../theme/astryx_tokens.dart';
@@ -23,6 +22,7 @@ class ChymePrompt {
 
 class ChymePromptCard extends StatelessWidget {
   const ChymePromptCard({
+    super.key,
     required this.prompt,
     required this.onTap,
     this.width = 196,

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../services/chyme.dart';
 import '../../theme/ace_icons.dart';
 import '../../theme/astryx_theme.dart';
 import '../../theme/astryx_tokens.dart';
@@ -8,7 +7,7 @@ import '../chyme_mark.dart';
 
 /// Chyme with nowhere to ask.
 class ChymeNotSetUp extends StatelessWidget {
-  const ChymeNotSetUp({required this.onConfigure});
+  const ChymeNotSetUp({super.key, required this.onConfigure});
 
   final VoidCallback onConfigure;
 

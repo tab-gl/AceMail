@@ -7,6 +7,7 @@ import '../ace_icon_view.dart';
 /// One of the header's two settings, as a chip.
 class ChymeSettingChip extends StatelessWidget {
   const ChymeSettingChip({
+    super.key,
     required this.label,
     required this.icon,
     required this.onTap,

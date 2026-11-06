@@ -13,6 +13,7 @@ import 'chyme_confirm_delete.dart';
 /// One turn, as a bubble.
 class ChymeBubble extends StatelessWidget {
   const ChymeBubble({
+    super.key,
     required this.turn,
     required this.onReply,
     this.canReply = false,

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/message_summary.dart';
-import '../../services/chyme.dart';
 import '../../state/mail_controller.dart';
 import '../../util/ace_snack.dart';
 import '../ace_confirm.dart';

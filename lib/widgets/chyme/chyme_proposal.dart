@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../services/chyme.dart';
 import '../../theme/ace_icons.dart';
 import '../../theme/astryx_theme.dart';
 import '../../theme/astryx_tokens.dart';
@@ -22,6 +21,7 @@ class ChymeProposal {
 /// The button that stands between a proposal and the mail.
 class ChymeProposalCard extends StatelessWidget {
   const ChymeProposalCard({
+    super.key,
     required this.proposal,
     required this.onConfirm,
     required this.onDismiss,

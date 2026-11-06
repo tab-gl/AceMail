@@ -11,7 +11,7 @@ import 'chyme_prompt.dart';
 /// what makes it read as a hand of cards offered rather than a list to scroll —
 /// the shape does the inviting, and the middle card is the one it is offering.
 class ChymeSuggestionArc extends StatelessWidget {
-  const ChymeSuggestionArc({required this.prompts, required this.onPick});
+  const ChymeSuggestionArc({super.key, required this.prompts, required this.onPick});
 
   final List<ChymePrompt> prompts;
   final void Function(String prompt) onPick;

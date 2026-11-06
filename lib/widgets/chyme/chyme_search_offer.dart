@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../services/chyme.dart';
 import '../../theme/ace_icons.dart';
 import '../../theme/astryx_theme.dart';
 import '../../theme/astryx_tokens.dart';
@@ -8,7 +7,7 @@ import '../astryx_widgets.dart';
 
 /// The search a reply asked for, offered rather than run.
 class ChymeSearchOffer extends StatelessWidget {
-  const ChymeSearchOffer({required this.query, required this.onTap});
+  const ChymeSearchOffer({super.key, required this.query, required this.onTap});
 
   final String query;
   final VoidCallback onTap;

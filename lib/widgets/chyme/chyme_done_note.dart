@@ -6,7 +6,7 @@ import '../ace_icon_view.dart';
 
 /// What happened after a button was pressed.
 class ChymeDoneNote extends StatelessWidget {
-  const ChymeDoneNote({required this.text});
+  const ChymeDoneNote({super.key, required this.text});
 
   final String text;
 
