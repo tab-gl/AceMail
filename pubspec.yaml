@@ -25,7 +25,7 @@ dependencies:
   hugeicons: ^1.2.0
   flutter:
     sdk: flutter
-  crypto: ^3.0.6
+  crypto: ^3.0.8
   # Translation talks to an HTTP endpoint, and this says so rather than
   # borrowing the copy enough_mail brings with it.
   http: ^1.2.0
@@ -51,7 +51,7 @@ dependencies:
   # AES-256-GCM for the local cache. Already present through enough_mail;
   # named here because the vault depends on it directly.
   pointycastle: ^4.0.0
-  flutter_svg: ^2.0.10
+  flutter_svg: ^2.3.2
   # Reading the provider logos in a test, so a malformed one fails the build
   # rather than the screen. Already present through the HTML renderer; named
   # here because a test depends on it directly.
